@@ -34,6 +34,18 @@ const ICONS = {
   globe: `M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20Z${CIRCLE}`,
   zap: 'M13 2 3 14h9l-1 8 10-12h-9Z',
   trash: 'M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6',
+  camera: 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2ZM16 13a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
+  cloud: 'M18 10h-1.3A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10ZM8 22l1-2m3 2 1-2m3 2 1-2',
+  text: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM14 2v6h6M8 13h8M8 17h5',
+  mic: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3ZM19 10v2a7 7 0 0 1-14 0v-2M12 19v3',
+  arrow: 'M5 12h14m-6-6 6 6-6 6',
+  plus: 'M12 5v14M5 12h14',
+  search: 'm21 21-4.3-4.3M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z',
+  doc: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM14 2v6h6',
+  lock: 'M5 11h14v11H5zM8 11V7a4 4 0 0 1 8 0v4',
+  pill: 'm10.5 20.5 10-10a5 5 0 0 0-7-7l-10 10a5 5 0 0 0 7 7ZM8.5 8.5l7 7',
+  siren: 'M7 18v-6a5 5 0 0 1 10 0v6M5 21h14M12 2v2M4.2 5.2l1.4 1.4M19.8 5.2l-1.4 1.4M2 12h2M20 12h2',
+  book: 'M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2ZM22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7Z',
 };
 const DOMAIN_ICONS = {
   medical_emergency: 'heart', medical_history: 'clipboard', road_accident: 'car', fire: 'flame',
@@ -174,14 +186,21 @@ export function icon(doc, name) {
   return svg;
 }
 
-/** All builders share one context: `e` creates elements, `i` creates icons. */
-function context(doc) {
+/**
+ * `tel:` href if it is a plain phone number (`tel:` + optional `+` + 2-15 digits), else null.
+ * @param {unknown} tel
+ * @returns {string | null}
+ */
+export const safeTel = (tel) => (TEL_RE.test(str(tel)) ? str(tel) : null);
+
+/** All builders share one context: `e` creates elements, `i` creates icons; `level` is the title heading level. */
+function context(doc, level = 3) {
   const e = elementFactory(doc);
   const i = (name) => icon(doc, name);
   const badge = ([label, tone, iconName]) => e('span', { class: `badge tone-${tone}`, lang: 'en' }, iconName && i(iconName), label);
   const section = (key, title, ...content) =>
     e('section', { class: `card-section section-${key}`, 'aria-labelledby': `card-sec-${key}` },
-      e('h4', { id: `card-sec-${key}`, class: 'section-title', lang: 'en', text: title }), ...content);
+      e(`h${Math.min(level + 1, 6)}`, { id: `card-sec-${key}`, class: 'section-title', lang: 'en', text: title }), ...content);
   const extLink = (href, text) =>
     e('a', { href, target: '_blank', rel: 'noopener noreferrer', class: 'ext-link' }, text, i('external'),
       e('span', { class: 'visually-hidden', lang: 'en', text: ' (opens in a new tab)' }));
@@ -189,15 +208,15 @@ function context(doc) {
     TEL_RE.test(str(c?.tel))
       ? e('a', { href: c.tel, class: 'call-btn' }, i('phone'), e('span', { lang: 'en', text: `Call ${str(c.number)} — ${str(c.label)}` }))
       : null;
-  return { e, i, badge, section, extLink, callLink };
+  return { e, i, badge, section, extLink, callLink, level };
 }
 
-function header({ e, i, badge }, card) {
+function header({ e, i, badge, level }, card) {
   const sev = lookup(SEVERITY, card.severity);
   const verified = card.verification?.status === 'verified';
   return e('header', { class: 'card-header' },
     e('p', { class: 'card-eyebrow', lang: 'en', text: 'Action Card' }),
-    e('h3', { id: 'card-title', class: 'card-title', tabindex: '-1', lang: 'en', text: formatDomain(card.domain) }),
+    e(`h${level}`, { id: 'card-title', class: 'card-title', tabindex: '-1', lang: 'en', text: formatDomain(card.domain) }),
     e('p', { class: 'badge-row' },
       e('span', { class: `badge badge-severity sev-${sev ? card.severity : 'unknown'}`, lang: 'en' },
         i(sev?.[1] ?? 'info'), `Severity: ${severityLabel(card.severity)}`),
@@ -254,10 +273,11 @@ function details({ e }, summary, ...content) {
  * Builds the full Action Card element. Pure: no globals besides `doc`, no side effects.
  * @param {ActionCard} card API response from POST /api/analyze.
  * @param {Document} [doc]
+ * @param {{ level?: number }} [options] Heading level of the card title (sections use level + 1).
  * @returns {HTMLElement}
  */
-export function renderActionCard(card, doc = document) {
-  const ctx = context(doc);
+export function renderActionCard(card, doc = document, { level = 3 } = {}) {
+  const ctx = context(doc, level);
   const { e, i, badge, section, extLink, callLink } = ctx;
   const lang = langOf(card);
   const contacts = list(card.contacts).map(callLink).filter(Boolean);
@@ -316,13 +336,14 @@ export function buildPlainText(card) {
  * @param {{ name: string, emergency: string }} country
  * @param {string} message
  * @param {Document} [doc]
+ * @param {{ level?: number }} [options] Heading level of the title.
  * @returns {HTMLElement}
  */
-export function renderEmergencyFallback(country, message, doc = document) {
+export function renderEmergencyFallback(country, message, doc = document, { level = 3 } = {}) {
   const { e, callLink } = context(doc);
   const number = str(country.emergency);
   return e('article', { class: 'action-card fallback-card', 'aria-labelledby': 'card-title' },
-    e('h3', { id: 'card-title', class: 'card-title', tabindex: '-1', text: `Emergency number for ${str(country.name)}` }),
+    e(`h${level}`, { id: 'card-title', class: 'card-title', tabindex: '-1', text: `Emergency number for ${str(country.name)}` }),
     e('p', { class: 'summary', text: message }),
     e('p', {}, callLink({ tel: `tel:${number}`, number, label: 'Emergency (all services)' })));
 }
@@ -337,7 +358,7 @@ export function renderSkeleton(doc = document) {
   return e('div', { class: 'skeleton', 'aria-hidden': 'true' }, ...['40', '70', '100', 'block', '80', '60'].map((w) => e('span', { class: `sk sk-${w}` })));
 }
 
-/* ---------- side panel: profile-style cards ---------- */
+/* ---------- summary side card (profile-card style) ---------- */
 
 function profile({ e, i }, { key, tone, title, sub, avatar, banner }, ...body) {
   return e('section', { class: `profile-card ${tone}`, 'aria-labelledby': `${key}-title` },
@@ -363,20 +384,6 @@ function telRow({ e, i }, c) {
 
 const toolButton = ({ e, i }, id, iconName, label, extra = {}) =>
   e('button', { type: 'button', id, class: 'btn btn-secondary btn-sm', ...extra }, i(iconName), e('span', { text: label }));
-
-/**
- * Verified emergency numbers for the selected country.
- * @param {{ name: string }} country
- * @param {{ label: string, number: string, tel: string }[]} contacts From `directoryFor`.
- * @param {Document} [doc]
- * @returns {HTMLElement}
- */
-export function renderDirectoryCard(country, contacts, doc = document) {
-  const ctx = context(doc);
-  return profile(ctx, { key: 'directory', tone: 'tone-brand', title: 'Emergency numbers', sub: `${str(country?.name)} · Verified directory`, avatar: 'shield' },
-    ctx.e('ul', { class: 'pc-list' }, ...list(contacts).map((c) => telRow(ctx, c)).filter(Boolean)),
-    ctx.e('p', { class: 'pc-note' }, ctx.i('info'), 'From a verified directory — never from the AI.'));
-}
 
 /**
  * Compact summary of an Action Card with its tools (copy, download, read aloud, print).

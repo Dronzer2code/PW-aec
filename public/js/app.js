@@ -1,11 +1,16 @@
 /**
- * LifeBridge workspace controller: wires the Intake form to POST /api/analyze and shows the Action Card.
- * All card markup is built by render.js; this file owns state, events and focus.
+ * LifeBridge workspace controller: routing, the Intake composer, POST /api/analyze and card tools.
+ * Markup for cards and pages comes from render.js and pages/views.js; this file owns state, events and focus.
  */
+import { createRouter } from './router.js';
 import {
-  buildPlainText, directoryFor, elementFactory, formatDomain, icon, renderActionCard, renderDirectoryCard,
-  renderEmergencyFallback, renderSkeleton, renderSummaryCard, severityLabel,
+  buildPlainText, directoryFor, elementFactory, formatDomain, icon, renderActionCard,
+  renderEmergencyFallback, renderSummaryCard, severityLabel,
 } from './render.js';
+import {
+  renderBreadcrumb, renderCallGrid, renderCardList, renderProgress, renderRecentItems, renderSampleGrid, renderSuggestions,
+} from './pages/views.js';
+import { createCardStore } from './pages/store.js';
 import { SAMPLES, drawSampleImage } from './samples.js';
 import { DEFAULT_LIMITS, downscaleImage, fileToBase64, formatBytes, normalizeMimeType, safeFileName, validateFiles } from './files.js';
 import { MAX_RECORDING_MS, describeMicError, isRecordingSupported, startRecording } from './recorder.js';
@@ -27,6 +32,9 @@ const ERRORS = {
 const FALLBACK = new Set(['AI_UNAVAILABLE', 'AI_TIMEOUT', 'AI_BAD_OUTPUT', 'AI_UPSTREAM_ERROR', 'INTERNAL', 'NETWORK', 'TIMEOUT']);
 /** Transient failures that offer a Try again button. */
 const RETRY = new Set(['AI_TIMEOUT', 'AI_BAD_OUTPUT', 'AI_UPSTREAM_ERROR', 'INTERNAL', 'NETWORK', 'TIMEOUT', 'RATE_LIMITED']);
+/** Samples shown as suggestion cards under the composer. */
+const SUGGESTED = ['road-accident', 'chest-pain', 'prescription-photo'];
+const RECENT_LIMIT = 5;
 
 const $ = (id) => document.getElementById(id);
 const e = elementFactory(document);
@@ -35,12 +43,21 @@ const region = $('card-region');
 const submitBtn = $('submit-btn');
 const recordBtn = $('record-btn');
 const retryBtn = $('retry-btn');
-const sampleBtn = $('sample-btn');
-const menu = $('sample-list');
 const menuBtn = $('menu-btn');
 const sidebar = $('sidebar');
-const dialog = $('verify-dialog');
-const tabs = { card: $('tab-card'), intake: $('tab-intake') };
+const brandBtn = $('brand-btn');
+const quick = $('quick-settings');
+const search = $('search');
+const COUNTRY_SELECTS = ['country-select', 'qs-country', 'emergency-country'];
+const LANGUAGE_SELECTS = ['language-select', 'qs-language'];
+
+let storage = null;
+try {
+  storage = window.sessionStorage;
+} catch {
+  storage = null; // blocked storage: cards live in memory only
+}
+const store = createCardStore(storage);
 
 const state = {
   limits: { maxTextChars: 10_000, ...DEFAULT_LIMITS },
@@ -49,6 +66,7 @@ const state = {
   /** @type {{ id: number, file: File, mimeType: string }[]} */
   files: [],
   nextId: 1,
+  /** Card shown on the current /app/cards/<id> page (used by the card tools). */
   card: null,
   /** True while the microphone permission prompt is open. */
   starting: false,
@@ -57,8 +75,8 @@ const state = {
   busy: false,
   retryTimer: 0,
   toastTimer: 0,
-  /** @type {Element | null} Element to refocus when the dialog closes. */
-  opener: null,
+  stepTimer: 0,
+  recentAll: false,
 };
 
 /** Polite announcement; also shown briefly as a toast for sighted users. */
@@ -78,14 +96,33 @@ function showError(msg, retryAfterMs = -1) {
   if (retryAfterMs >= 0) state.retryTimer = setTimeout(() => { retryBtn.hidden = false; }, retryAfterMs);
 }
 
-/** Inline error state on the Situation field (Untitled-style error border + hint). */
+/** Inline error state on the composer. */
 function setFieldError(msg) {
   $('intake-error').textContent = msg;
   $('intake-error').hidden = !msg;
   text.setAttribute('aria-invalid', String(Boolean(msg)));
 }
 
-/* ---------- config ---------- */
+const pressed = (id) => $(id).getAttribute('aria-pressed') === 'true';
+const setPressed = (id, on) => $(id).setAttribute('aria-pressed', String(on));
+
+/* ---------- config, language and country ---------- */
+
+const selectedCountry = () => state.countries.find((c) => c.code === $('country-select').value) ?? DEFAULT_COUNTRY;
+
+function setCountry(code) {
+  for (const id of COUNTRY_SELECTS) $(id).value = code;
+  const country = selectedCountry();
+  $('sos-link').href = `tel:${country.emergency}`;
+  $('sos-number').textContent = country.emergency;
+  $('sos-country').textContent = ` (call, ${country.name})`;
+  $('country-name').textContent = `${country.name}, emergency number ${country.emergency}`;
+  $('call-slot').replaceChildren(renderCallGrid(directoryFor(country)));
+}
+
+function setLanguage(code) {
+  for (const id of LANGUAGE_SELECTS) $(id).value = code;
+}
 
 async function loadConfig() {
   try {
@@ -93,16 +130,20 @@ async function loadConfig() {
     if (!res.ok) throw new Error(String(res.status));
     const { languages, countries, limits, aiAvailable, requestTimeoutMs } = await res.json();
     if (Array.isArray(languages) && languages.length) {
-      $('language-select').replaceChildren(...languages.map((l) => {
-        const option = new Option(l.name === l.nativeName ? l.name : `${l.nativeName} (${l.name})`, l.code, false, l.code === 'en');
-        option.lang = l.code;
-        return option;
-      }));
+      for (const id of LANGUAGE_SELECTS) {
+        $(id).replaceChildren(...languages.map((l) => {
+          const option = new Option(l.name === l.nativeName ? l.name : `${l.nativeName} (${l.name})`, l.code, false, l.code === 'en');
+          option.lang = l.code;
+          return option;
+        }));
+      }
     }
     if (Array.isArray(countries) && countries.length) {
       state.countries = countries;
-      $('country-select').replaceChildren(...countries.map((c) => new Option(c.name, c.code)));
-      renderDirectory();
+      for (const id of COUNTRY_SELECTS) {
+        $(id).replaceChildren(...countries.map((c) => new Option(id === 'country-select' ? `${c.code} · ${c.emergency}` : `${c.name} · ${c.emergency}`, c.code)));
+      }
+      setCountry(countries[0].code);
     }
     if (Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0) state.timeoutMs = requestTimeoutMs;
     state.limits = { ...state.limits, ...limits };
@@ -114,43 +155,102 @@ async function loadConfig() {
   }
 }
 
-const selectedCountry = () => state.countries.find((c) => c.code === $('country-select').value) ?? DEFAULT_COUNTRY;
+/* ---------- routing ---------- */
 
-/* ---------- views: tabs, side panel, breadcrumb ---------- */
+const NAV_GROUP = { new: 'new', cards: 'cards', card: 'cards', samples: 'samples', emergency: 'emergency', verification: 'verification' };
+const WORKSPACE = { label: 'Workspace', href: '/app' };
+const CARDS = { label: 'Action Cards', href: '/app/cards' };
 
-/** Shows the "card" or "intake" tab panel. */
-function showView(name, focusTab = false) {
-  for (const [key, tab] of Object.entries(tabs)) {
-    const on = key === name;
-    tab.setAttribute('aria-selected', String(on));
-    tab.tabIndex = on ? 0 : -1;
-    $(`panel-${key}`).hidden = !on;
-  }
-  if (focusTab) tabs[name].focus();
-}
-
-function renderDirectory() {
-  const country = selectedCountry();
-  $('country-emergency').textContent = `Emergency ${country.emergency}`;
-  $('directory-slot').replaceChildren(renderDirectoryCard(country, directoryFor(country)));
-}
-
-/**
- * Puts `content` (card, fallback, skeleton or nothing) in the card panel and syncs everything around it.
- * @param {HTMLElement | null} content
- * @param {object | null} card The Action Card behind `content`, if any.
- */
-function setResult(content, card = null) {
+/** Shows the view for `route`; returns the page title and the heading that receives focus. */
+function renderRoute(route) {
   stopSpeaking();
-  state.card = card;
-  region.replaceChildren(...(content ? [content] : []));
-  $('view-tabs').hidden = !content;
-  showView(content ? 'card' : 'intake');
-  $('crumb-current').textContent = card ? formatDomain(card.domain) : 'New';
-  $('summary-slot').replaceChildren(...(card ? [renderSummaryCard(card)] : []));
-  $('summary-slot').hidden = !card;
-  $('directory-slot').hidden = Boolean(card);
-  if (card) $('speak-btn').hidden = !('speechSynthesis' in window);
+  setDrawer(false);
+  setQuick(false);
+  showError('');
+  state.card = null;
+  const view = Object.hasOwn(NAV_GROUP, route.name) ? route.name : 'not-found';
+  for (const section of document.querySelectorAll('[data-view]')) section.hidden = section.dataset.view !== view;
+  for (const link of document.querySelectorAll('[data-nav]')) {
+    if (link.dataset.nav === NAV_GROUP[route.name]) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+  let title = route.title;
+  let crumbs = [WORKSPACE, { label: route.title, href: route.path }];
+  let heading = document.querySelector(`[data-view="${view}"] h1`);
+  if (route.name === 'cards') {
+    crumbs = [WORKSPACE, CARDS];
+    $('card-list-slot').replaceChildren(renderCardList(store.list(), Date.now()));
+  } else if (route.name === 'card') {
+    ({ title, heading } = renderCardPage(route.params[0]));
+    crumbs = [WORKSPACE, CARDS, { label: title, href: route.path }];
+  }
+  $('breadcrumb').hidden = route.name === 'new';
+  $('breadcrumb').replaceChildren(renderBreadcrumb(crumbs));
+  return { title, heading };
+}
+
+function renderCardPage(id) {
+  const entry = store.get(id);
+  if (!entry) {
+    $('card-doc').replaceChildren(e('div', { class: 'empty' },
+      e('h1', { id: 'card-title', class: 'display', tabindex: '-1', text: 'Action Card not found' }),
+      e('p', { text: 'Cards are kept only in the browser tab that created them. It may have been closed.' }),
+      e('a', { href: '/app/cards', 'data-link': '', class: 'btn btn-dark', text: 'See your Action Cards' })));
+    $('summary-slot').replaceChildren();
+    $('summary-slot').hidden = true;
+    return { title: 'Action Card not found', heading: $('card-title') };
+  }
+  state.card = entry.card;
+  $('card-doc').replaceChildren(renderActionCard(entry.card, document, { level: 1 }));
+  $('summary-slot').replaceChildren(renderSummaryCard(entry.card));
+  $('summary-slot').hidden = false;
+  $('speak-btn').hidden = !('speechSynthesis' in window);
+  return { title: formatDomain(entry.card.domain), heading: $('card-title') };
+}
+
+const router = createRouter({ render: renderRoute, announce });
+
+/* ---------- sidebar: recent, search, quick settings, drawer ---------- */
+
+function renderRecent() {
+  const entries = store.list();
+  const items = renderRecentItems(entries);
+  items.forEach((li, n) => { li.dataset.overflow = String(n >= RECENT_LIMIT); });
+  $('recent-list').replaceChildren(...items);
+  $('recent-empty').hidden = entries.length > 0;
+  applySearch();
+}
+
+/** Filters Recent, the suggestion cards and the samples grid by the sidebar search text. */
+function applySearch() {
+  const q = search.value.trim().toLowerCase();
+  let recentShown = 0;
+  for (const li of $('recent-list').children) {
+    const match = !q || li.textContent.toLowerCase().includes(q);
+    li.hidden = !match || (!q && !state.recentAll && li.dataset.overflow === 'true');
+    recentShown += match ? 1 : 0;
+  }
+  for (const li of document.querySelectorAll('[data-search]')) {
+    li.hidden = Boolean(q) && !li.dataset.search.toLowerCase().includes(q);
+  }
+  const extra = $('recent-list').children.length - RECENT_LIMIT;
+  $('recent-more').hidden = Boolean(q) || extra <= 0;
+  $('recent-more-label').textContent = state.recentAll ? 'Show less' : `Show ${extra} more`;
+  $('search-empty').hidden = !q || recentShown > 0 || document.querySelector('[data-search]:not([hidden])') !== null;
+}
+
+function setQuick(open) {
+  quick.hidden = !open;
+  brandBtn.setAttribute('aria-expanded', String(open));
+}
+
+const drawerOpen = () => sidebar.classList.contains('is-open');
+
+function setDrawer(open) {
+  sidebar.classList.toggle('is-open', open);
+  $('sidebar-backdrop').hidden = !open;
+  menuBtn.setAttribute('aria-expanded', String(open));
+  if (open) sidebar.querySelector('button, a')?.focus();
 }
 
 /* ---------- intake ---------- */
@@ -162,7 +262,7 @@ function updateCounter() {
 
 async function loadSample(sample) {
   text.value = sample.text;
-  $('live-check').checked = Boolean(sample.liveCheck);
+  setPressed('live-btn', Boolean(sample.liveCheck));
   updateCounter();
   showError('');
   setFieldError('');
@@ -179,50 +279,20 @@ async function loadSample(sample) {
   announce(`Sample loaded: ${sample.title}.${note}`);
 }
 
-/* Sample picker: WAI-ARIA menu button (arrows, Home/End, Esc returns focus, Tab closes). */
-const menuItems = () => Array.from(menu.querySelectorAll('[role="menuitem"]'));
-
-function setMenu(open, focusIndex = 0) {
-  menu.hidden = !open;
-  sampleBtn.setAttribute('aria-expanded', String(open));
-  if (open) menuItems().at(focusIndex)?.focus();
-}
-
-function renderSamples() {
-  menu.replaceChildren(...SAMPLES.map((sample) => {
-    const item = e('button', { type: 'button', role: 'menuitem', tabindex: '-1', class: 'menu-item', text: sample.title });
-    item.addEventListener('click', () => {
-      setMenu(false);
-      loadSample(sample);
-    });
-    return item;
-  }));
-}
-
-function onMenuKey(event) {
-  const items = menuItems();
-  const index = items.indexOf(document.activeElement);
-  const move = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: -1 }[event.key];
-  if (move !== undefined) {
-    event.preventDefault();
-    items.at(move % items.length)?.focus();
-  } else if (event.key === 'Escape') {
-    event.stopPropagation();
-    setMenu(false);
-    sampleBtn.focus();
-  } else if (event.key === 'Tab') {
-    setMenu(false);
-  }
+function useSample(id) {
+  const sample = SAMPLES.find((s) => s.id === id);
+  if (!sample) return;
+  if (router.current.name !== 'new') router.navigate('/app');
+  loadSample(sample);
 }
 
 function renderFiles() {
   $('file-list').replaceChildren(...state.files.map(({ id, file, mimeType }) => {
-    const remove = e('button', { type: 'button', class: 'tool-btn file-remove', 'aria-label': `Remove ${file.name}` });
-    remove.append(icon(document, 'trash'));
+    const remove = e('button', { type: 'button', class: 'icon-btn file-remove', 'aria-label': `Remove ${file.name}` }, icon(document, 'cross'));
     remove.addEventListener('click', () => removeFile(id));
-    const kind = mimeType.split('/')[0] === 'application' ? 'PDF' : mimeType.split('/')[0];
+    const kind = mimeType.startsWith('image/') ? 'IMG' : mimeType.startsWith('audio/') ? 'AUD' : 'PDF';
     return e('li', { class: 'file-chip' },
-      e('span', { class: 'file-icon', 'aria-hidden': 'true' }, e('span', { text: kind === 'PDF' ? 'PDF' : kind === 'image' ? 'IMG' : 'AUD' })),
+      e('span', { class: 'file-icon', 'aria-hidden': 'true', text: kind }),
       e('span', { class: 'file-text' }, e('span', { class: 'file-name', text: file.name }), e('span', { class: 'file-size', text: formatBytes(file.size) })),
       remove);
   }));
@@ -312,10 +382,10 @@ async function buildRequest() {
       ({ name: safeFileName(file.name), mimeType, data: await fileToBase64(file) }))),
     language: $('language-select').value,
     country: $('country-select').value,
-    liveCheck: $('live-check').checked,
+    liveCheck: pressed('live-btn'),
   };
   if (text.value.trim()) body.text = text.value.trim();
-  if ($('share-location').checked) {
+  if (pressed('location-btn')) {
     const location = await getLocation();
     if (location) body.location = location;
     else announce('Location unavailable. Continuing without nearby services.');
@@ -353,75 +423,69 @@ async function postAnalyze(body) {
   }
 }
 
+const setStep = (n) => region.replaceChildren(renderProgress(n));
+
 /** aria-disabled (not `disabled`) keeps focus on the button while busy; `state.busy` blocks re-submits. */
 function setBusy(busy) {
   state.busy = busy;
   submitBtn.setAttribute('aria-disabled', String(busy));
-  submitBtn.textContent = busy ? 'Creating Action Card…' : 'Create Action Card';
+  $('submit-label').textContent = busy ? 'Creating Action Card…' : 'Create Action Card';
   region.setAttribute('aria-busy', String(busy));
+  $('suggestions').hidden = busy;
+  clearTimeout(state.stepTimer);
 }
 
-function handleFailure({ code, message = '', details = [], requestId, retryAfterMs = 0 }, previous) {
+function handleFailure({ code, message = '', details = [], requestId, retryAfterMs = 0 }) {
   const known = Object.hasOwn(ERRORS, code) ? code : 'INTERNAL';
   const info = known === 'VALIDATION_ERROR' ? (details.length ? details.join('; ') : message).slice(0, 200) : '';
   const msg = `${ERRORS[known]}${info ? ` (${info})` : ''}${requestId ? ` Reference: ${requestId}.` : ''}`;
   showError(msg, RETRY.has(known) ? (known === 'RATE_LIMITED' ? retryAfterMs : 0) : -1);
   announce('');
-  if (FALLBACK.has(known)) {
-    setResult(renderEmergencyFallback(selectedCountry(), 'We could not create an Action Card. If anyone is in danger, call now.'));
-  } else {
-    setResult(previous && renderActionCard(previous), previous);
-  }
+  region.replaceChildren(...(FALLBACK.has(known)
+    ? [renderEmergencyFallback(selectedCountry(), 'We could not create an Action Card. If anyone is in danger, call now.', document, { level: 2 })]
+    : []));
+}
+
+/** Stores the card, resets the composer and opens the card page. */
+function finish(card) {
+  const id = store.add(card);
+  text.value = '';
+  state.files = [];
+  renderFiles();
+  updateCounter();
+  region.replaceChildren();
+  renderRecent();
+  if (router.current.name === 'new') router.navigate(`/app/cards/${id}`);
+  announce(`Action Card ready. Severity ${severityLabel(card.severity)}. ${card.summary ?? ''}`);
 }
 
 async function submit() {
   if (state.busy) return;
   showError('');
   if (!text.value.trim() && !state.files.length && !state.recording) {
-    showView('intake');
     setFieldError('Describe the situation, record a voice note, or attach a file first.');
     return text.focus();
   }
   setFieldError('');
   setBusy(true);
-  const previous = state.card;
+  setStep(0);
   if (state.recording) {
     state.recording.stop();
     await state.recording.attached;
   }
   announce('Analyzing your input. This usually takes 5–20 seconds…');
-  setResult(renderSkeleton());
   try {
-    const result = await postAnalyze(await buildRequest());
-    if (!result.card) return handleFailure(result, previous);
-    setResult(renderActionCard(result.card), result.card);
-    $('card-title')?.focus();
-    announce(`Action Card ready. Severity ${severityLabel(result.card.severity)}. ${result.card.summary ?? ''}`);
-  } catch {
-    handleFailure({ code: 'INTERNAL' }, previous);
-  } finally {
+    const body = await buildRequest();
+    setStep(1);
+    state.stepTimer = setTimeout(() => setStep(2), 3500);
+    const result = await postAnalyze(body);
     setBusy(false);
+    if (result.card) finish(result.card);
+    else handleFailure(result);
+  } catch {
+    setBusy(false);
+    handleFailure({ code: 'INTERNAL' });
   }
-}
-
-/** Resets the workspace to a blank Intake (language and country are kept). */
-async function clearAll() {
-  if (state.busy) return;
-  if (state.recording) {
-    state.recording.stop();
-    await state.recording.attached;
-  }
-  text.value = '';
-  state.files = [];
-  $('live-check').checked = false;
-  $('share-location').checked = false;
-  renderFiles();
-  updateCounter();
-  showError('');
-  setFieldError('');
-  setResult(null);
-  text.focus();
-  announce('Cleared. Start a new Action Card.');
 }
 
 /* ---------- card tools ---------- */
@@ -433,7 +497,7 @@ function stopSpeaking() {
 }
 
 function toggleSpeaking() {
-  if (!state.card || $('speak-btn').getAttribute('aria-pressed') === 'true') return stopSpeaking();
+  if (!state.card || pressed('speak-btn')) return stopSpeaking();
   const utterance = new SpeechSynthesisUtterance(buildPlainText(state.card));
   utterance.lang = state.card.meta?.outputLanguage ?? 'en';
   utterance.rate = 0.95;
@@ -441,7 +505,7 @@ function toggleSpeaking() {
   utterance.addEventListener('error', stopSpeaking);
   speechSynthesis.cancel();
   speechSynthesis.speak(utterance);
-  $('speak-btn').setAttribute('aria-pressed', 'true');
+  setPressed('speak-btn', true);
 }
 
 async function copySms() {
@@ -466,39 +530,18 @@ function downloadJson() {
 
 const TOOLS = { 'speak-btn': toggleSpeaking, 'copy-btn': copySms, 'download-btn': downloadJson, 'print-btn': () => window.print() };
 
-/* ---------- sidebar drawer and dialog ---------- */
-
-const drawerOpen = () => sidebar.classList.contains('is-open');
-
-function setDrawer(open) {
-  sidebar.classList.toggle('is-open', open);
-  $('sidebar-backdrop').hidden = !open;
-  menuBtn.setAttribute('aria-expanded', String(open));
-  if (open) sidebar.querySelector('a, button')?.focus();
-}
-
-function openDialog() {
-  state.opener = document.activeElement;
-  if (typeof dialog.showModal === 'function') dialog.showModal();
-  else dialog.setAttribute('open', '');
-  dialog.querySelector('[data-close]')?.focus();
-}
-
-function closeDialog() {
-  if (typeof dialog.close === 'function') dialog.close();
-  else dialog.removeAttribute('open');
-  /** @type {HTMLElement | null} */ (state.opener)?.focus?.();
-}
-
 /* ---------- init ---------- */
 
-renderSamples();
-renderDirectory();
+$('sample-list').replaceChildren(...renderSuggestions(SAMPLES.filter((s) => SUGGESTED.includes(s.id))));
+$('sample-grid').replaceChildren(...renderSampleGrid(SAMPLES));
+setCountry(DEFAULT_COUNTRY.code);
 updateCounter();
+renderRecent();
 if (!isRecordingSupported()) {
   recordBtn.disabled = true;
   $('record-label').textContent = 'Voice recording not supported in this browser';
 }
+
 text.addEventListener('input', () => {
   updateCounter();
   if (text.value.trim()) setFieldError('');
@@ -509,72 +552,60 @@ $('file-input').addEventListener('change', async (event) => {
   await addFiles(event.target.files ?? []);
   event.target.value = '';
 });
-$('country-select').addEventListener('change', renderDirectory);
+for (const id of ['location-btn', 'live-btn']) $(id).addEventListener('click', () => setPressed(id, !pressed(id)));
+for (const id of COUNTRY_SELECTS) $(id).addEventListener('change', (event) => setCountry(event.target.value));
+for (const id of LANGUAGE_SELECTS) $(id).addEventListener('change', (event) => setLanguage(event.target.value));
 $('intake-form').addEventListener('submit', (event) => {
   event.preventDefault();
   submit();
 });
 retryBtn.addEventListener('click', submit);
-$('clear-btn').addEventListener('click', clearAll);
-
-sampleBtn.addEventListener('click', () => setMenu(menu.hidden));
-sampleBtn.addEventListener('keydown', (event) => {
-  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-    event.preventDefault();
-    setMenu(true, event.key === 'ArrowDown' ? 0 : -1);
-  }
-});
-menu.addEventListener('keydown', onMenuKey);
-document.addEventListener('click', (event) => {
-  if (!menu.hidden && !event.target.closest?.('.menu-wrap, #nav-samples')) setMenu(false);
-});
-
-for (const [key, tab] of Object.entries(tabs)) tab.addEventListener('click', () => showView(key));
-$('view-tabs').addEventListener('keydown', (event) => {
-  const next = { ArrowLeft: null, ArrowRight: null, Home: 'card', End: 'intake' }[event.key];
-  if (next === undefined) return;
-  event.preventDefault();
-  showView(next ?? (tabs.card.getAttribute('aria-selected') === 'true' ? 'intake' : 'card'), true);
-});
-
+$('top-print').addEventListener('click', () => window.print());
 $('summary-slot').addEventListener('click', (event) => {
   const id = event.target.closest?.('button')?.id;
   if (id && Object.hasOwn(TOOLS, id)) TOOLS[id]();
 });
 
+document.addEventListener('click', (event) => {
+  const sampleBtn = event.target.closest?.('[data-sample]');
+  if (sampleBtn) useSample(sampleBtn.dataset.sample);
+  if (!quick.hidden && !event.target.closest?.('.brand-card')) setQuick(false);
+});
+brandBtn.addEventListener('click', () => setQuick(quick.hidden));
+search.addEventListener('input', applySearch);
+search.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !search.value) return;
+  event.stopPropagation();
+  search.value = '';
+  applySearch();
+});
+$('recent-toggle').addEventListener('click', (event) => {
+  const open = event.currentTarget.getAttribute('aria-expanded') !== 'true';
+  event.currentTarget.setAttribute('aria-expanded', String(open));
+  $('recent-body').hidden = !open;
+});
+$('recent-more').addEventListener('click', () => {
+  state.recentAll = !state.recentAll;
+  applySearch();
+});
 menuBtn.addEventListener('click', () => setDrawer(!drawerOpen()));
 $('sidebar-backdrop').addEventListener('click', () => setDrawer(false));
+
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape') return;
-  if (!menu.hidden) {
-    setMenu(false);
-    sampleBtn.focus();
-  } else if (drawerOpen()) {
+  const typing = event.target.closest?.('input, textarea, select, [contenteditable="true"]');
+  if (event.key === '/' && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    event.preventDefault();
+    if (window.matchMedia?.('(max-width: 899px)').matches) setDrawer(true);
+    search.focus();
+  } else if (event.key === 'Escape' && !quick.hidden) {
+    setQuick(false);
+    brandBtn.focus();
+  } else if (event.key === 'Escape' && drawerOpen()) {
     setDrawer(false);
     menuBtn.focus();
   }
 });
-$('nav-samples').addEventListener('click', () => {
-  setDrawer(false);
-  showView('intake');
-  setMenu(true);
-});
-$('nav-emergency').addEventListener('click', () => {
-  setDrawer(false);
-  $('directory-slot').hidden = false;
-  $('directory-title').focus();
-});
-$('nav-verify').addEventListener('click', openDialog);
-dialog.addEventListener('click', (event) => {
-  if (event.target === dialog || event.target.closest?.('[data-close]')) closeDialog();
-});
-dialog.addEventListener('cancel', (event) => {
-  event.preventDefault();
-  closeDialog();
-});
 
-window.addEventListener('beforeprint', () => {
-  if (state.card) showView('card');
-  region.querySelectorAll('details').forEach((d) => { d.open = true; });
-});
+window.addEventListener('beforeprint', () => document.querySelectorAll('#card-doc details').forEach((d) => { d.open = true; }));
+router.start();
 loadConfig();

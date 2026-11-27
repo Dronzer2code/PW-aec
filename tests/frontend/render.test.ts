@@ -10,11 +10,11 @@ import {
   formatDomain,
   formatTimeframe,
   renderActionCard,
-  renderDirectoryCard,
   renderEmergencyFallback,
   renderSkeleton,
   renderSummaryCard,
   safeHttpUrl,
+  safeTel,
   severityLabel,
 } from '../../public/js/render.js';
 import { makeCard } from './fixtures.js';
@@ -49,6 +49,14 @@ describe('label helpers', () => {
     expect(safeHttpUrl('/relative')).toBeNull();
     expect(safeHttpUrl(undefined)).toBeNull();
   });
+
+  it('only accepts plain tel: numbers', () => {
+    expect(safeTel('tel:112')).toBe('tel:112');
+    expect(safeTel('tel:+441234')).toBe('tel:+441234');
+    expect(safeTel('javascript:alert(1)')).toBeNull();
+    expect(safeTel('tel:1')).toBeNull();
+    expect(safeTel(undefined)).toBeNull();
+  });
 });
 
 describe('renderActionCard', () => {
@@ -74,6 +82,13 @@ describe('renderActionCard', () => {
     expect(root.querySelectorAll('details')).toHaveLength(2);
     expect(root.querySelector('.disclaimer')?.textContent).toContain('not a substitute');
     expect(root.querySelector('.card-meta')?.textContent).toBe('Model gemini-flash-latest · Fresh result · 2140 ms · Ref req-123');
+  });
+
+  it('can render the title as the page h1 with h2 sections', () => {
+    const root = renderActionCard(makeCard(), document, { level: 1 });
+    expect(root.querySelector('#card-title')?.tagName).toBe('H1');
+    expect(root.querySelectorAll('h2.section-title').length).toBeGreaterThan(3);
+    expect(root.querySelector('h4')).toBeNull();
   });
 
   it('conveys severity and verification with text, not colour alone', () => {
@@ -217,6 +232,8 @@ describe('fallback and skeleton', () => {
   it('renders the country emergency number when the AI is unavailable', () => {
     const el = renderEmergencyFallback({ name: 'United States', emergency: '911' }, 'AI unavailable.');
     expect(el.querySelector('#card-title')?.textContent).toBe('Emergency number for United States');
+    expect(el.querySelector('#card-title')?.tagName).toBe('H3');
+    expect(renderEmergencyFallback({ name: 'X', emergency: '1' }, 'm', document, { level: 2 }).querySelector('h2')).not.toBeNull();
     expect(el.querySelector('a')?.getAttribute('href')).toBe('tel:911');
     expect(el.querySelector('a')?.textContent).toContain('Call 911');
   });
@@ -241,24 +258,6 @@ describe('verified directory mirror', () => {
       { service: 'general_emergency', label: 'Emergency (all services)', number: '999', tel: 'tel:999' },
     ]);
     expect(directoryFor({ code: '__proto__', emergency: '911' })).toHaveLength(1);
-  });
-});
-
-describe('renderDirectoryCard', () => {
-  it('lists verified numbers as tel links and states their source', () => {
-    const el = renderDirectoryCard({ name: 'India' }, directoryFor({ code: 'IN', emergency: '112' }));
-    expect(el.querySelector('#directory-title')?.textContent).toBe('Emergency numbers');
-    expect(el.querySelector('.pc-sub')?.textContent).toBe('India · Verified directory');
-    const links = Array.from(el.querySelectorAll<HTMLAnchorElement>('a.pc-row'));
-    expect(links).toHaveLength(7);
-    expect(links[0]?.getAttribute('href')).toBe('tel:112');
-    expect(links[0]?.textContent).toBe('Call Emergency (all services)112');
-    expect(el.textContent).toContain('never from the AI');
-  });
-
-  it('drops rows whose tel value is not a plain number', () => {
-    const el = renderDirectoryCard({ name: 'X' }, [{ label: 'Bad', number: '1', tel: 'javascript:alert(1)' }]);
-    expect(el.querySelector('a')).toBeNull();
   });
 });
 

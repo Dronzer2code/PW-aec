@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * WCAG 2.x contrast checks on the design tokens in app.css, for light and dark themes.
+ * WCAG 2.x contrast checks on the design tokens in app.css (light theme only).
  * jsdom cannot compute rendered colours, so the tokens themselves are verified.
  */
 const CSS = readFileSync(resolve(process.cwd(), 'public/css/app.css'), 'utf8');
@@ -14,13 +14,8 @@ function tokens(block: string): Record<string, string> {
   return out;
 }
 
-function rootBlock(from: number): string {
-  const start = CSS.indexOf(':root {', from);
-  return CSS.slice(start, CSS.indexOf('}', start));
-}
-
-const light = tokens(rootBlock(0));
-const dark = { ...light, ...tokens(rootBlock(CSS.indexOf('@media (prefers-color-scheme: dark)'))) };
+const ROOT = CSS.slice(CSS.indexOf(':root {'), CSS.indexOf('}', CSS.indexOf(':root {')));
+const theme = tokens(ROOT);
 
 function luminance(hex: string): number {
   const full = hex.length === 4 ? `#${[...hex.slice(1)].map((c) => c + c).join('')}` : hex;
@@ -37,37 +32,31 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-const SURFACES = ['bg', 'bg-subtle', 'bg-muted'] as const;
+const get = (key: string): string => {
+  const value = theme[key];
+  if (!value) throw new Error(`missing token --${key}`);
+  return value;
+};
+
+const SURFACES = ['page', 'shell', 'side', 'surface', 'surface-2'] as const;
 const TEXT_PAIRS: [string, string][] = [
-  ...(['text', 'text-secondary', 'text-tertiary'] as const).flatMap((fg): [string, string][] => SURFACES.map((bg) => [fg, bg])),
-  ['text', 'page'], ['text-tertiary', 'page'], ['placeholder', 'bg'],
-  ['brand-text', 'bg'], ['brand-text', 'brand-soft'], ['text-secondary', 'brand-soft'],
-  ['on-primary', 'primary'], ['on-primary', 'primary-hover'],
-  ['error', 'bg'], ['danger-fg', 'error-bg'], ['text', 'error-bg'],
+  ...(['ink', 'ink-2', 'muted'] as const).flatMap((fg): [string, string][] => SURFACES.map((bg) => [fg, bg])),
+  ['on-dark', 'dark'], ['on-dark', 'dark-hover'], ['ink', 'neutral-bg'], ['muted', 'neutral-bg'],
   ['ok-fg', 'ok-bg'], ['info-fg', 'info-bg'], ['warn-fg', 'warn-bg'], ['danger-fg', 'danger-bg'], ['neutral-fg', 'neutral-bg'],
-  ['danger-fg', 'bg'], ['warn-fg', 'bg'], ['ok-fg', 'bg'], ['info-fg', 'bg'], ['text-secondary', 'warn-bg'], ['text-tertiary', 'warn-bg'],
+  ['danger-fg', 'surface'], ['warn-fg', 'surface'], ['ok-fg', 'surface'], ['info-fg', 'surface'],
+  ['ink-2', 'warn-bg'], ['muted', 'warn-bg'], ['ink', 'danger-bg'],
   ...(['critical', 'high', 'moderate', 'low'] as const).flatMap((s): [string, string][] => [
-    [`sev-${s}-fg`, `sev-${s}-bg`], [`sev-${s}-fg`, 'bg'], [`sev-${s}-fg`, 'bg-subtle'], ['text', `sev-${s}-bg`],
+    [`sev-${s}-fg`, `sev-${s}-bg`], [`sev-${s}-fg`, 'surface'], [`sev-${s}-fg`, 'surface-2'], ['ink', `sev-${s}-bg`],
   ]),
 ];
-/** Input borders, switch tracks and focus indicators (WCAG 1.4.11 non-text contrast). */
+/** Input borders and focus indicators (WCAG 1.4.11 non-text contrast). */
 const UI_PAIRS: [string, string][] = [
-  ['border-input', 'bg'], ['border-input', 'bg-subtle'], ['border-input', 'page'],
-  ['switch-off', 'bg'], ['brand', 'bg'], ['knob', 'switch-off'], ['knob', 'brand'],
-  ['focus', 'bg'], ['focus', 'bg-subtle'], ['focus', 'bg-muted'],
-  ['error-border', 'bg'], ['primary', 'bg'],
+  ['border-input', 'surface'], ['border-input', 'side'],
+  ['focus', 'surface'], ['focus', 'side'], ['focus', 'shell'], ['focus', 'page'], ['focus', 'surface-2'],
+  ['dark', 'surface'], ['danger-fg', 'danger-bg'],
 ];
 
-describe.each([
-  ['light', light],
-  ['dark', dark],
-] as const)('%s theme tokens', (_name, theme) => {
-  const get = (key: string): string => {
-    const value = theme[key];
-    if (!value) throw new Error(`missing token --${key}`);
-    return value;
-  };
-
+describe('light theme tokens', () => {
   it.each(TEXT_PAIRS)('%s on %s meets 4.5:1 (text)', (fg, bg) => {
     expect(contrast(get(fg), get(bg))).toBeGreaterThanOrEqual(4.5);
   });
@@ -79,6 +68,10 @@ describe.each([
   it('white call-button text meets 4.5:1', () => {
     expect(contrast('#ffffff', get('call-bg'))).toBeGreaterThanOrEqual(4.5);
     expect(contrast('#ffffff', get('call-hover'))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('ships no dark theme (light only, matching the landing page)', () => {
+    expect(CSS).not.toContain('prefers-color-scheme');
   });
 });
 

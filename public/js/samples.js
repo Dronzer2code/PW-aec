@@ -5,6 +5,9 @@
  * @typedef {object} SampleIntake
  * @property {string} id Stable identifier.
  * @property {string} title Short button label.
+ * @property {string} description One-line explanation shown on the samples page.
+ * @property {('text' | 'photo' | 'voice' | 'live')[]} inputs Input types the sample exercises.
+ * @property {string} icon Icon name from render.js.
  * @property {string} text Messy Intake text exactly as a user might type or paste it.
  * @property {boolean} [liveCheck] Whether the sample should enable the live web cross-check.
  * @property {{ name: string, lines: string[] }} [image] Fictional document drawn at runtime and attached as a PNG.
@@ -15,6 +18,9 @@ export const SAMPLES = Object.freeze([
   {
     id: 'road-accident',
     title: 'Roadside accident (Hinglish)',
+    description: 'A panicked bystander message mixing Hindi and English: unconscious biker, heavy bleeding.',
+    inputs: ['text'],
+    icon: 'car',
     text:
       'Bhaiya jaldi help karo!! Highway pe Sector 9 flyover ke neeche, petrol pump ke saamne accident hua hai. ' +
       'Ek bike wala truck se takra gaya, helmet nahi tha. Uske sir se bahut khoon beh raha hai aur woh hosh mein nahi hai, ' +
@@ -24,6 +30,9 @@ export const SAMPLES = Object.freeze([
   {
     id: 'medical-history',
     title: 'Elderly patient history',
+    description: 'Caregiver notes with medicines, allergies and a low sugar reading to structure safely.',
+    inputs: ['text'],
+    icon: 'clipboard',
     text:
       'pt - Mrs Kamala R, 78 yrs, lives w/ son (son works night shift)\n' +
       'meds: metformin 500mg BD, Amlodipine 5 mg once daily , atorvastatin 20mg night, ecosprin 75 (after stent)\n' +
@@ -38,6 +47,9 @@ export const SAMPLES = Object.freeze([
   {
     id: 'flood-warning',
     title: 'Flood warning + family at risk',
+    description: 'A forwarded evacuation warning plus a family on the ground floor; cross-checked live.',
+    inputs: ['text', 'live'],
+    icon: 'waves',
     liveCheck: true,
     text:
       'Fwd: Fwd: *URGENT* Dam gates to be opened tonight 11pm, all low lying areas near the river to be EVACUATED. ' +
@@ -50,6 +62,9 @@ export const SAMPLES = Object.freeze([
   {
     id: 'chest-pain',
     title: 'Chest pain, 62-year-old father',
+    description: 'Classic heart attack warning signs in someone who refuses to go to hospital.',
+    inputs: ['text'],
+    icon: 'heart',
     text:
       'My father is 62, he suddenly has chest pain since 20 minutes, like heavy pressure, sweating a lot, ' +
       'pain going to his left arm and jaw. He is diabetic and smokes. He says its just gas and doesnt want ' +
@@ -58,6 +73,9 @@ export const SAMPLES = Object.freeze([
   {
     id: 'prescription-photo',
     title: 'Photo of a prescription',
+    description: 'A handwritten prescription photo (generated on your device) read by Gemini.',
+    inputs: ['text', 'photo'],
+    icon: 'camera',
     text: 'Can you read this prescription and tell me what to watch out for?',
     image: {
       name: 'prescription-sample.png',
@@ -75,6 +93,9 @@ export const SAMPLES = Object.freeze([
   {
     id: 'traffic-weather',
     title: 'Traffic + weather alert',
+    description: 'Road closure and rain alerts colliding with a dialysis appointment; cross-checked live.',
+    inputs: ['text', 'live'],
+    icon: 'cloud',
     liveCheck: true,
     text:
       'Fwd: TRAFFIC ADVISORY - Traffic Police: NH-48 closed near km 32 due to waterlogging, use service road. Expect long delays.\n' +

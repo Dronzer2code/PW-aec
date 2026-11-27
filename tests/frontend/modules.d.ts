@@ -5,11 +5,12 @@
 
 declare module '*/public/js/render.js' {
   import type { ActionCard } from '../../src/domain/schema.js';
-  export function renderActionCard(card: ActionCard, doc?: Document): HTMLElement;
+  export function renderActionCard(card: ActionCard, doc?: Document, options?: { level?: number }): HTMLElement;
   export function renderEmergencyFallback(
     country: { name: string; emergency: string },
     message: string,
     doc?: Document,
+    options?: { level?: number },
   ): HTMLElement;
   export function renderSkeleton(doc?: Document): HTMLElement;
   export function elementFactory(
@@ -21,6 +22,7 @@ declare module '*/public/js/render.js' {
   export function formatActor(actor: string): string;
   export function formatDomain(domain: string): string;
   export function safeHttpUrl(url: unknown): string | null;
+  export function safeTel(tel: unknown): string | null;
   export interface DirectoryContact {
     service: string;
     label: string;
@@ -30,13 +32,56 @@ declare module '*/public/js/render.js' {
   export const SERVICE_LABELS: Readonly<Record<string, string>>;
   export const DIRECTORY: Readonly<Record<string, [string, string][]>>;
   export function directoryFor(country: { code: string; emergency: string }): DirectoryContact[];
-  export function renderDirectoryCard(
-    country: { name: string },
-    contacts: { label: string; number: string; tel: string }[],
-    doc?: Document,
-  ): HTMLElement;
   export function renderSummaryCard(card: ActionCard, doc?: Document): HTMLElement;
   export function icon(doc: Document, name: string): SVGSVGElement;
+}
+
+declare module '*/public/js/router.js' {
+  export interface Route {
+    name: string;
+    title: string;
+    params: string[];
+    path: string;
+  }
+  export const ROUTES: readonly { name: string; pattern: RegExp; title: string }[];
+  export const NOT_FOUND: { name: string; title: string };
+  export function matchRoute(path: string, routes?: readonly { name: string; pattern: RegExp; title: string }[]): Route;
+  export function isInternalLink(event: MouseEvent, anchor: HTMLAnchorElement | null, origin: string): boolean;
+  export function createRouter(options: {
+    render: (route: Route) => { title?: string; heading?: HTMLElement | null } | undefined;
+    announce?: (message: string) => void;
+    routes?: readonly { name: string; pattern: RegExp; title: string }[];
+    win?: Window;
+  }): { navigate(path: string, options?: { replace?: boolean }): void; readonly current: Route; start(): void; stop(): void };
+}
+
+declare module '*/public/js/pages/store.js' {
+  import type { ActionCard } from '../../src/domain/schema.js';
+  export interface CardEntry {
+    id: string;
+    createdAt: number;
+    card: ActionCard;
+  }
+  export function createCardStore(
+    storage: Pick<Storage, 'getItem' | 'setItem'> | null | undefined,
+    options?: { max?: number },
+  ): { add(card: unknown, now?: number): string; get(id: string): CardEntry | null; list(): CardEntry[] };
+}
+
+declare module '*/public/js/pages/views.js' {
+  type Entry = { id: string; createdAt: number; card: unknown };
+  export const PROGRESS_STEPS: readonly string[];
+  export function relativeTime(then: number, now: number): string;
+  export function renderRecentItems(entries: Entry[], doc?: Document): HTMLLIElement[];
+  export function renderCardList(entries: Entry[], now: number, doc?: Document): HTMLElement;
+  export function renderSuggestions(samples: readonly { id: string; title: string; icon: string }[], doc?: Document): HTMLLIElement[];
+  export function renderSampleGrid(
+    samples: readonly { id: string; title: string; description: string; inputs: string[]; icon: string }[],
+    doc?: Document,
+  ): HTMLLIElement[];
+  export function renderCallGrid(contacts: { label: string; number: string; tel: string }[], doc?: Document): HTMLElement;
+  export function renderBreadcrumb(crumbs: { label: string; href: string }[], doc?: Document): HTMLOListElement;
+  export function renderProgress(active: number, doc?: Document): HTMLOListElement;
 }
 
 declare module '*/public/js/files.js' {
@@ -61,6 +106,9 @@ declare module '*/public/js/samples.js' {
   export interface SampleIntake {
     id: string;
     title: string;
+    description: string;
+    inputs: ('text' | 'photo' | 'voice' | 'live')[];
+    icon: string;
     text: string;
     liveCheck?: boolean;
     image?: { name: string; lines: string[] };
