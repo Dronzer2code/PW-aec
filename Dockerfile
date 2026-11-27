@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # ---- build: compile TypeScript ------------------------------------------
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
@@ -9,13 +9,13 @@ COPY src ./src
 RUN npm run build
 
 # ---- deps: production dependencies only ----------------------------------
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force
 
 # ---- runtime: minimal, non-root ------------------------------------------
-FROM node:22-alpine AS runtime
+FROM node:26-alpine AS runtime
 ENV NODE_ENV=production PORT=8080
 WORKDIR /app
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
