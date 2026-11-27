@@ -1,0 +1,140 @@
+openapi: 3.1.0
+info:
+  title: LifeBridge API
+  version: 1.0.0
+  description: Turns messy multimodal Intakes into verified Action Cards. Source of truth for types is src/domain/schema.ts.
+servers:
+  - url: /
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, const: ok } } }
+  /api/config:
+    get:
+      summary: Public UI configuration
+      responses:
+        '200':
+          description: Languages, countries, limits, AI availability
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [languages, countries, aiAvailable, limits]
+                properties:
+                  languages: { type: array, items: { type: object, properties: { code: { type: string }, name: { type: string }, nativeName: { type: string } } } }
+                  countries: { type: array, items: { type: object, properties: { code: { type: string }, name: { type: string }, emergency: { type: string } } } }
+                  aiAvailable: { type: boolean }
+                  limits: { type: object, properties: { maxTextChars: { type: integer }, maxFiles: { type: integer }, maxFileBytes: { type: integer } } }
+  /api/analyze:
+    post:
+      summary: Create a verified Action Card from an Intake
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnalyzeRequest' }
+      responses:
+        '200':
+          description: Action Card. Header X-Cache is HIT or MISS.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActionCard' }
+        '400': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '502': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+        '504': { $ref: '#/components/responses/Error' }
+components:
+  responses:
+    Error:
+      description: Error envelope
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                required: [code, message, requestId]
+                properties:
+                  code: { type: string, enum: [VALIDATION_ERROR, PAYLOAD_TOO_LARGE, RATE_LIMITED, AI_UNAVAILABLE, AI_TIMEOUT, AI_BAD_OUTPUT, NOT_FOUND, INTERNAL] }
+                  message: { type: string }
+                  requestId: { type: string }
+                  details: { type: array, items: { type: string } }
+  schemas:
+    AnalyzeRequest:
+      type: object
+      additionalProperties: false
+      description: At least one of text or files is required.
+      properties:
+        text: { type: string, maxLength: 10000 }
+        files:
+          type: array
+          maxItems: 4
+          items:
+            type: object
+            additionalProperties: false
+            required: [mimeType, data]
+            properties:
+              name: { type: string, maxLength: 120 }
+              mimeType: { type: string, enum: [image/jpeg, image/png, image/webp, application/pdf, audio/webm, audio/ogg, audio/mp4, audio/mpeg, audio/wav] }
+              data: { type: string, contentEncoding: base64, description: max 5 MB decoded; magic bytes must match mimeType }
+        language: { type: string, default: en }
+        country: { type: string, enum: [IN, US, GB, EU, AU], default: IN }
+        location: { type: object, properties: { lat: { type: number, minimum: -90, maximum: 90 }, lng: { type: number, minimum: -180, maximum: 180 } } }
+        liveCheck: { type: boolean, default: false }
+    ActionCard:
+      type: object
+      properties:
+        domain: { type: string, enum: [medical_emergency, medical_history, road_accident, fire, natural_disaster, crime_or_safety, public_health, other] }
+        severity: { type: string, enum: [critical, high, moderate, low] }
+        summary: { type: string }
+        detectedLanguage: { type: string }
+        sourceText: { type: string }
+        facts:
+          type: array
+          items:
+            type: object
+            properties:
+              label: { type: string }
+              value: { type: string }
+              evidence: { type: string }
+              confidence: { type: number }
+              status: { type: string, enum: [grounded, transcribed, unverified] }
+              needsReview: { type: boolean }
+        actions:
+          type: array
+          items:
+            type: object
+            properties:
+              instruction: { type: string }
+              actor: { type: string, enum: [caller, bystander, caregiver, authority] }
+              timeframe: { type: string, enum: [immediately, within_1_hour, today, ongoing] }
+              rationale: { type: string }
+              flags: { type: array, items: { type: string, enum: [dosage_removed, number_redacted, escalation_added] } }
+        redFlags: { type: array, items: { type: string } }
+        missingInformation: { type: array, items: { type: string } }
+        contacts: { type: array, items: { type: object, properties: { service: { type: string }, label: { type: string }, number: { type: string }, tel: { type: string } } } }
+        verification:
+          type: object
+          properties:
+            status: { type: string, enum: [verified, needs_review] }
+            groundingScore: { type: number }
+            checks: { type: array, items: { type: object, properties: { id: { type: string }, status: { type: string, enum: [pass, warn, fail] }, message: { type: string } } } }
+        liveCheck:
+          type: object
+          properties:
+            status: { type: string, enum: [corroborated, contradicted, inconclusive, skipped, error] }
+            note: { type: string }
+            sources: { type: array, items: { type: object, properties: { title: { type: string }, url: { type: string, format: uri } } } }
+        smsText: { type: string, maxLength: 300 }
+        mapsLinks: { type: array, items: { type: object, properties: { label: { type: string }, url: { type: string, format: uri } } } }
+        disclaimer: { type: string }
+        meta: { type: object, properties: { requestId: { type: string }, model: { type: string }, cached: { type: boolean }, latencyMs: { type: number }, outputLanguage: { type: string } } }

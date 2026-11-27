@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="LifeBridge turns messy voice notes, photos, PDFs and text into a structured, verified Action Card with prioritised life-saving steps and verified emergency numbers. Powered by Gemini.">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#0f766e">
+    <title>LifeBridge — turn messy input into verified, life-saving actions</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/css/styles.css">
+    <script type="module" src="/js/app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <rect width="32" height="32" rx="9" class="brand-bg"/>
+            <path d="M6 20c3-6 7-9 10-9s7 3 10 9M10 20v-4m6 4v-9m6 9v-4" class="brand-line"/>
+          </svg>
+          <span>LifeBridge</span>
+        </a>
+        <p class="header-note">Powered by Gemini · verified on our server</p>
+      </div>
+    </header>
+
+    <main id="main" class="container" tabindex="-1">
+      <div class="hero">
+        <h1>Turn messy information into a verified action plan</h1>
+        <p class="lead">Speak, type, or upload photos and documents in any language. LifeBridge structures them into an Action Card with prioritised steps, evidence for every fact, and emergency numbers from a verified directory.</p>
+      </div>
+
+      <div class="layout">
+        <section class="panel intake-panel" aria-labelledby="intake-heading">
+          <h2 id="intake-heading" class="panel-title">Intake</h2>
+          <form id="intake-form" class="intake-form" novalidate>
+            <div class="field">
+              <label for="intake-text">Describe the situation</label>
+              <p id="intake-text-hint" class="hint">Any language or mix of languages. Paste messages, notes or medical history as they are.</p>
+              <textarea id="intake-text" name="text" rows="8" maxlength="10000" spellcheck="true" aria-describedby="intake-text-hint char-count"></textarea>
+              <p id="char-count" class="hint counter">0 / 10,000 characters</p>
+            </div>
+
+            <fieldset class="group">
+              <legend>Try a sample</legend>
+              <div id="sample-list" class="sample-list"></div>
+            </fieldset>
+
+            <fieldset class="group">
+              <legend>Voice, photos and documents</legend>
+              <div class="record-row">
+                <button type="button" id="record-btn" class="btn btn-secondary" aria-pressed="false" aria-describedby="record-hint">
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3ZM19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg>
+                  <span id="record-label">Record voice note</span>
+                </button>
+                <span id="record-timer" class="record-timer" hidden>0:00 / 2:00</span>
+              </div>
+              <p id="record-hint" class="hint">Up to 2 minutes. The recording is attached as a file below.</p>
+
+              <div class="field">
+                <label for="file-input">Add photos, PDFs or audio</label>
+                <p id="file-hint" class="hint">Up to 4 files, 5 MB each: JPEG, PNG, WEBP, PDF or audio. Large photos are resized on your device.</p>
+                <input type="file" id="file-input" name="files" multiple accept="image/jpeg,image/png,image/webp,application/pdf,audio/*" aria-describedby="file-hint">
+              </div>
+              <ul id="file-list" class="file-list" aria-label="Attached files"></ul>
+            </fieldset>
+
+            <fieldset class="group">
+              <legend>Output and context</legend>
+              <div class="field-grid">
+                <div class="field">
+                  <label for="language-select">Output language</label>
+                  <select id="language-select" name="language">
+                    <option value="en">English</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="country-select">Country</label>
+                  <select id="country-select" name="country" aria-describedby="country-hint">
+                    <option value="IN">India — emergency 112</option>
+                  </select>
+                  <p id="country-hint" class="hint">Used to pick verified emergency numbers.</p>
+                </div>
+              </div>
+              <div class="check">
+                <input type="checkbox" id="share-location" name="shareLocation" aria-describedby="location-hint">
+                <label for="share-location">Share my location for nearby services</label>
+              </div>
+              <p id="location-hint" class="hint check-hint">Asked only when you submit. Rounded to about 100 m and never stored.</p>
+              <div class="check">
+                <input type="checkbox" id="live-check" name="liveCheck" aria-describedby="live-hint">
+                <label for="live-check">Cross-check with live web (Google Search)</label>
+              </div>
+              <p id="live-hint" class="hint check-hint">Useful for forwarded warnings and news. Adds a few seconds.</p>
+            </fieldset>
+
+            <button type="submit" id="submit-btn" class="btn btn-primary btn-block">Create Action Card</button>
+            <p id="status" class="status" role="status" aria-live="polite"></p>
+            <div id="error" class="error-box" role="alert">
+              <p id="error-text" class="error-text"></p>
+              <button type="button" id="retry-btn" class="btn btn-secondary" hidden>Try again</button>
+            </div>
+          </form>
+        </section>
+
+        <section id="result-panel" class="panel result-panel" aria-labelledby="result-heading">
+          <div class="result-head">
+            <h2 id="result-heading" class="panel-title">Action Card</h2>
+            <div id="card-toolbar" class="toolbar" role="group" aria-label="Action Card tools" hidden>
+              <button type="button" id="speak-btn" class="btn btn-ghost" aria-pressed="false">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5 6 9H2v6h4l5 4V5ZM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
+                <span id="speak-label">Read aloud</span>
+              </button>
+              <button type="button" id="copy-btn" class="btn btn-ghost">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 9h11v11H9zM5 15H4V4h11v1"/></svg>
+                <span>Copy SMS text</span>
+              </button>
+              <button type="button" id="download-btn" class="btn btn-ghost">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>
+                <span>Download JSON</span>
+              </button>
+              <button type="button" id="print-btn" class="btn btn-ghost">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
+                <span>Print</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="card-region" class="card-region" aria-busy="false">
+            <div id="empty-state" class="empty-state">
+              <p class="empty-lead">Your Action Card will appear here.</p>
+              <ol class="steps">
+                <li><strong>Intake</strong> <span>Type, speak, or upload photos and PDFs — messy is fine.</span></li>
+                <li><strong>Gemini structures</strong> <span>Facts with evidence quotes, severity, and prioritised actions.</span></li>
+                <li><strong>Server verifies</strong> <span>Every fact is checked against your input. Phone numbers come only from a verified directory.</span></li>
+              </ol>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <p><strong>LifeBridge is not a substitute for emergency services or medical professionals.</strong> If someone is in danger, call your local emergency number now.</p>
+        <p>Your input is processed in memory and never stored. Built for Hack2skill PromptWars.</p>
+      </div>
+    </footer>
+  </body>
+</html>

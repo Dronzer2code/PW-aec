@@ -1,0 +1,48 @@
+{
+  "name": "lifebridge",
+  "version": "1.0.0",
+  "description": "LifeBridge: Gemini-powered bridge that turns messy real-world inputs (voice, photos, PDFs, text) into structured, verified, life-saving Action Cards.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "check": "npm run lint && npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "@google/genai": "^3.6.1",
+    "compression": "^1.8.2",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.5",
+    "helmet": "^8.3.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/compression": "^1.8.1",
+    "@types/express": "^5.0.6",
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "^22.20.7",
+    "@types/supertest": "^7.2.1",
+    "@vitest/coverage-v8": "^5.1.2",
+    "axe-core": "^4.14.1",
+    "eslint": "^9.39.5",
+    "globals": "^17.14.0",
+    "jsdom": "^31.0.1",
+    "supertest": "^7.3.2",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9",
+    "typescript-eslint": "^8.74.0",
+    "vitest": "^5.1.2"
+  }
+}
