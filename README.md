@@ -135,6 +135,12 @@ It returns an `ActionCard` (see `src/domain/schema.ts`). Errors use the envelope
 
 `docs/PRD.md` (product), `docs/MVP.md` (scope), `docs/TRD.md` (technical design), and `docs/PROCESS_FLOW.md` (flows).
 
+## Interface
+
+- **`/` landing page**: animated WebGL sky (cloud shader adapted from [Aceternity UI](https://ui.aceternity.com/components/cloud-shader)) with procedural grass and rock, Instrument Serif headlines, and an accessible auto-advancing feature tablist with a pause control. Motion is turned off under `prefers-reduced-motion`.
+- **`/app` workspace**: sidebar shell, editor-style intake toolbar (language, country, voice, attach, samples), form fields built to Untitled-UI-style specs (label, hint and error states, 3:1 boundaries), an Action Card document view, and a summary side card.
+- No framework and no build step: vanilla ES modules, self-hosted fonts (SIL OFL) and a strict CSP.
+
 ## Disclaimer
 
 LifeBridge is an assistive tool, not a medical device or an emergency service. Always call your local emergency number in a life-threatening situation.

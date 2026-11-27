@@ -18,6 +18,26 @@ const ICONS = {
   cross: `m15 9-6 6m0-6 6 6${CIRCLE}`,
   phone: 'M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4l2.8.7a2 2 0 0 1 1.7 2Z',
   external: 'M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
+  chevron: 'm9 18 6-6-6-6',
+  tick: 'M20 6 9 17l-5-5',
+  shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z',
+  heart: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8Z',
+  clipboard: 'M9 2h6v4H9zM16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2m1 8h6m-6 4h4',
+  car: 'M5 17H3v-5l2-5h14l2 5v5h-2M3 12h18M7 17a2 2 0 1 0 4 0 2 2 0 1 0-4 0m6 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0',
+  flame: 'M12 22a7 7 0 0 0 7-7c0-4-3-6-4-10-2 2-3 4-3 6-1-1-2-2-2-4-3 3-5 5-5 8a7 7 0 0 0 7 7Z',
+  waves: 'M2 7c2 0 2-2 5-2s3 2 5 2 2-2 5-2 3 2 5 2M2 13c2 0 2-2 5-2s3 2 5 2 2-2 5-2 3 2 5 2M2 19c2 0 2-2 5-2s3 2 5 2 2-2 5-2 3 2 5 2',
+  users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm9 14v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
+  copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
+  download: 'M12 3v12m0 0-5-5m5 5 5-5M4 21h16',
+  volume: 'M11 5 6 9H2v6h4l5 4V5Zm4.5 3.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14',
+  printer: 'M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z',
+  globe: `M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20Z${CIRCLE}`,
+  zap: 'M13 2 3 14h9l-1 8 10-12h-9Z',
+  trash: 'M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6',
+};
+const DOMAIN_ICONS = {
+  medical_emergency: 'heart', medical_history: 'clipboard', road_accident: 'car', fire: 'flame',
+  natural_disaster: 'waves', crime_or_safety: 'shield', public_health: 'users', other: 'info',
 };
 
 /** [label, icon] */
@@ -53,6 +73,20 @@ const LIVE_STATUS = {
 };
 const CHECK_STATUS = { pass: ['Pass', 'ok', 'check'], warn: ['Warning', 'warn', 'warn'], fail: ['Fail', 'danger', 'cross'] };
 
+/** Labels and numbers mirrored from src/domain/contacts.ts (a test keeps them identical). Never from the AI. */
+export const SERVICE_LABELS = Object.freeze({
+  general_emergency: 'Emergency (all services)', ambulance: 'Ambulance', police: 'Police', fire: 'Fire brigade',
+  disaster: 'Disaster helpline', child_helpline: 'Child helpline', women_helpline: 'Women helpline',
+});
+/** @type {Readonly<Record<string, [string, string][]>>} country code → [service, number], general emergency first. */
+export const DIRECTORY = Object.freeze({
+  IN: [['general_emergency', '112'], ['ambulance', '108'], ['police', '100'], ['fire', '101'], ['disaster', '1078'], ['child_helpline', '1098'], ['women_helpline', '181']],
+  US: [['general_emergency', '911']],
+  GB: [['general_emergency', '999']],
+  EU: [['general_emergency', '112'], ['child_helpline', '116111']],
+  AU: [['general_emergency', '000']],
+});
+
 /** Own-property lookup, so keys like `__proto__` from data never hit the prototype. */
 const lookup = (map, key) => (typeof key === 'string' && Object.hasOwn(map, key) ? map[key] : undefined);
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -67,6 +101,30 @@ export const formatTimeframe = (timeframe) => lookup(TIMEFRAMES, timeframe) ?? '
 export const formatActor = (actor) => lookup(ACTORS, actor) ?? 'Anyone';
 /** @param {string} domain @returns {string} */
 export const formatDomain = (domain) => lookup(DOMAINS, domain) ?? DOMAINS.other;
+
+/**
+ * Verified contacts for a country from GET /api/config. The full mirrored list is used only when its
+ * general number matches the server's, so a stale mirror can never show a wrong number.
+ * @param {{ code: string, emergency: string }} country
+ * @returns {{ service: string, label: string, number: string, tel: string }[]}
+ */
+export function directoryFor(country) {
+  const general = str(country?.emergency);
+  const rows = lookup(DIRECTORY, country?.code) ?? [];
+  return (rows[0]?.[1] === general ? rows : [['general_emergency', general]])
+    .map(([service, number]) => ({ service, label: SERVICE_LABELS[service], number, tel: `tel:${number}` }));
+}
+
+const metaLine = (meta = {}) => [
+  meta.model && `Model ${str(meta.model)}`,
+  meta.cached ? 'Cached result' : 'Fresh result',
+  Number.isFinite(meta.latencyMs) && `${Math.round(meta.latencyMs)} ms`,
+  meta.requestId && `Ref ${str(meta.requestId)}`,
+].filter(Boolean).join(' · ');
+const langOf = (card) => {
+  const raw = str(card.meta?.outputLanguage);
+  return LANG_RE.test(raw) ? raw : 'en';
+};
 
 /**
  * Normalized URL if it is an absolute http(s) URL, else null (blocks `javascript:`, `data:`, …).
@@ -102,7 +160,12 @@ export function elementFactory(doc = document) {
   };
 }
 
-function icon(doc, name) {
+/**
+ * Decorative stroke icon from the fixed ICONS set.
+ * @param {Document} doc @param {string} name
+ * @returns {SVGSVGElement}
+ */
+export function icon(doc, name) {
   const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
   const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
   for (const [k, v] of [['class', 'icon'], ['viewBox', '0 0 24 24'], ['aria-hidden', 'true'], ['focusable', 'false']]) svg.setAttribute(k, v);
@@ -167,11 +230,15 @@ function factItem({ e, badge }, f) {
 function liveCheck({ e, badge, section, extLink }, live) {
   const status = lookup(LIVE_STATUS, live?.status);
   if (!status) return null; // `skipped` or unknown → nothing to show
-  const sources = list(live.sources).map((s) => [safeHttpUrl(s?.url), str(s?.title)]).filter(([href]) => href);
   return section('live', 'Live web check (Google Search)',
     e('p', { class: 'badge-row' }, badge(status)),
     live.note && e('p', { class: 'live-note', text: str(live.note) }),
-    sources.length && e('ul', { class: 'link-list' }, ...sources.map(([href, title]) => e('li', {}, extLink(href, title || new URL(href).hostname)))));
+    sourceList({ e, extLink }, live));
+}
+
+function sourceList({ e, extLink }, live) {
+  const sources = list(live?.sources).map((s) => [safeHttpUrl(s?.url), str(s?.title)]).filter(([href]) => href);
+  return sources.length ? e('ul', { class: 'link-list' }, ...sources.map(([href, title]) => e('li', {}, extLink(href, title || new URL(href).hostname)))) : null;
 }
 
 function textList({ e, section }, key, title, items) {
@@ -192,20 +259,12 @@ function details({ e }, summary, ...content) {
 export function renderActionCard(card, doc = document) {
   const ctx = context(doc);
   const { e, i, badge, section, extLink, callLink } = ctx;
-  const raw = str(card.meta?.outputLanguage);
-  const lang = LANG_RE.test(raw) ? raw : 'en';
+  const lang = langOf(card);
   const contacts = list(card.contacts).map(callLink).filter(Boolean);
   const actions = list(card.actions);
   const facts = list(card.facts);
   const maps = list(card.mapsLinks).map((l) => [safeHttpUrl(l?.url), str(l?.label) || 'Open in Google Maps']).filter(([href]) => href);
   const checks = list(card.verification?.checks);
-  const meta = card.meta ?? {};
-  const metaText = [
-    meta.model && `Model ${str(meta.model)}`,
-    meta.cached ? 'Cached result' : 'Fresh result',
-    Number.isFinite(meta.latencyMs) && `${Math.round(meta.latencyMs)} ms`,
-    meta.requestId && `Ref ${str(meta.requestId)}`,
-  ].filter(Boolean).join(' · ');
 
   return e('article', {
     class: `action-card sev-${lookup(SEVERITY, card.severity) ? card.severity : 'unknown'}`,
@@ -232,7 +291,7 @@ export function renderActionCard(card, doc = document) {
       `What Gemini read from your input${card.detectedLanguage ? ` — detected language: ${str(card.detectedLanguage)}` : ''}`,
       e('p', { class: 'source-text', dir: 'auto', text: str(card.sourceText) })),
     card.disclaimer && e('p', { class: 'disclaimer', text: str(card.disclaimer) }),
-    e('p', { class: 'card-meta', lang: 'en', text: metaText }));
+    e('p', { class: 'card-meta', lang: 'en', text: metaLine(card.meta ?? {}) }));
 }
 
 /**
@@ -276,4 +335,87 @@ export function renderEmergencyFallback(country, message, doc = document) {
 export function renderSkeleton(doc = document) {
   const e = elementFactory(doc);
   return e('div', { class: 'skeleton', 'aria-hidden': 'true' }, ...['40', '70', '100', 'block', '80', '60'].map((w) => e('span', { class: `sk sk-${w}` })));
+}
+
+/* ---------- side panel: profile-style cards ---------- */
+
+function profile({ e, i }, { key, tone, title, sub, avatar, banner }, ...body) {
+  return e('section', { class: `profile-card ${tone}`, 'aria-labelledby': `${key}-title` },
+    e('div', { class: 'pc-banner' }, banner),
+    e('div', { class: 'pc-head' },
+      e('span', { class: 'pc-avatar', 'aria-hidden': 'true' }, i(avatar), e('span', { class: 'pc-badge' }, i('tick'))),
+      e('h2', { id: `${key}-title`, class: 'pc-title', tabindex: '-1', text: title }),
+      e('p', { class: 'pc-sub', text: sub })),
+    ...body);
+}
+
+/** Tel link row ("notable works" style); null unless the tel value is a plain number. */
+function telRow({ e, i }, c) {
+  return TEL_RE.test(str(c?.tel))
+    ? e('li', {}, e('a', { href: c.tel, class: 'pc-row' },
+      e('span', { class: 'pc-tile', 'aria-hidden': 'true' }, i('phone')),
+      e('span', { class: 'pc-row-text' },
+        e('span', { class: 'pc-row-title' }, e('span', { class: 'visually-hidden', text: 'Call ' }), str(c.label)),
+        e('span', { class: 'pc-row-sub', text: str(c.number) })),
+      i('chevron')))
+    : null;
+}
+
+const toolButton = ({ e, i }, id, iconName, label, extra = {}) =>
+  e('button', { type: 'button', id, class: 'btn btn-secondary btn-sm', ...extra }, i(iconName), e('span', { text: label }));
+
+/**
+ * Verified emergency numbers for the selected country.
+ * @param {{ name: string }} country
+ * @param {{ label: string, number: string, tel: string }[]} contacts From `directoryFor`.
+ * @param {Document} [doc]
+ * @returns {HTMLElement}
+ */
+export function renderDirectoryCard(country, contacts, doc = document) {
+  const ctx = context(doc);
+  return profile(ctx, { key: 'directory', tone: 'tone-brand', title: 'Emergency numbers', sub: `${str(country?.name)} · Verified directory`, avatar: 'shield' },
+    ctx.e('ul', { class: 'pc-list' }, ...list(contacts).map((c) => telRow(ctx, c)).filter(Boolean)),
+    ctx.e('p', { class: 'pc-note' }, ctx.i('info'), 'From a verified directory — never from the AI.'));
+}
+
+/**
+ * Compact summary of an Action Card with its tools (copy, download, read aloud, print).
+ * Buttons carry fixed ids; the controller handles their clicks.
+ * @param {ActionCard} card
+ * @param {Document} [doc]
+ * @returns {HTMLElement}
+ */
+export function renderSummaryCard(card, doc = document) {
+  const ctx = context(doc);
+  const { e, i, badge } = ctx;
+  const sev = lookup(SEVERITY, card.severity);
+  const contacts = list(card.contacts).map((c) => telRow(ctx, c)).filter(Boolean);
+  const services = list(card.contacts).map((c) => str(c?.label)).filter(Boolean);
+  const live = lookup(LIVE_STATUS, card.liveCheck?.status);
+  const heading = (text) => e('h3', { class: 'pc-heading', text });
+  const stat = (label, iconName, value) => e('div', { class: 'pc-stat' }, e('dt', { text: label }), e('dd', {}, i(iconName), value));
+  return profile(ctx, {
+    key: 'summary',
+    tone: `sev-${sev ? card.severity : 'unknown'}`,
+    title: formatDomain(card.domain),
+    sub: `Severity: ${severityLabel(card.severity)} · ${card.verification?.status === 'verified' ? 'Verified' : 'Needs human review'}`,
+    avatar: lookup(DOMAIN_ICONS, card.domain) ?? 'info',
+    banner: e('span', { class: 'sev-pill' }, i(sev?.[1] ?? 'info'), `${severityLabel(card.severity)} severity`),
+  },
+  e('dl', { class: 'pc-stats' },
+    stat('Facts', 'clipboard', String(list(card.facts).length)),
+    stat('Actions', 'check', String(list(card.actions).length)),
+    stat('Grounding', 'shield', `${pct(card.verification?.groundingScore)}%`)),
+  e('div', { id: 'card-toolbar', class: 'pc-actions', role: 'group', 'aria-label': 'Share this Action Card' },
+    toolButton(ctx, 'copy-btn', 'copy', 'Copy SMS'), toolButton(ctx, 'download-btn', 'download', 'Download JSON')),
+  e('div', { class: 'pc-section' }, heading('About'),
+    e('p', { class: 'pc-about', lang: langOf(card), dir: 'auto', text: str(card.summary) }),
+    e('ul', { class: 'pc-meta' },
+      card.detectedLanguage && e('li', {}, i('globe'), `Detected language: ${str(card.detectedLanguage)}`),
+      e('li', {}, i('zap'), metaLine(card.meta ?? {}))),
+    services.length && e('ul', { class: 'pc-tags', 'aria-label': 'Services' }, ...services.map((s) => e('li', { text: s })))),
+  contacts.length && e('div', { class: 'pc-section' }, heading('Emergency contacts'), e('ul', { class: 'pc-list' }, ...contacts)),
+  live && e('div', { class: 'pc-section' }, heading('Live web check'), e('p', { class: 'badge-row' }, badge(live)), sourceList(ctx, card.liveCheck)),
+  e('div', { class: 'pc-actions', role: 'group', 'aria-label': 'Listen or print' },
+    toolButton(ctx, 'speak-btn', 'volume', 'Read aloud', { 'aria-pressed': 'false' }), toolButton(ctx, 'print-btn', 'printer', 'Print')));
 }

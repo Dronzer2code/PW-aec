@@ -3,155 +3,253 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="LifeBridge turns messy voice notes, photos, PDFs and text into a structured, verified Action Card with prioritised life-saving steps and verified emergency numbers. Powered by Gemini.">
-    <meta name="color-scheme" content="light dark">
-    <meta name="theme-color" content="#0f766e">
-    <title>LifeBridge — turn messy input into verified, life-saving actions</title>
+    <title>LifeBridge — messy input in, verified life-saving action out</title>
+    <meta name="description" content="LifeBridge uses Gemini to turn panicked voice notes, prescription photos, PDFs and forwarded alerts in any language into a verified Action Card: severity, prioritised steps, evidence-checked facts and emergency numbers from a verified directory.">
+    <meta name="theme-color" content="#efefef">
+    <meta name="color-scheme" content="light">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/css/styles.css">
-    <link rel="modulepreload" href="/js/render.js">
-    <link rel="modulepreload" href="/js/samples.js">
-    <link rel="modulepreload" href="/js/files.js">
-    <link rel="modulepreload" href="/js/recorder.js">
-    <script type="module" src="/js/app.js"></script>
+    <link rel="preload" href="/fonts/InstrumentSerif-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/Inter-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/css/fonts.css">
+    <link rel="stylesheet" href="/css/landing.css">
+    <link rel="modulepreload" href="/js/clouds.js">
+    <script type="module" src="/js/landing.js"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to main content</a>
 
-    <header class="site-header">
-      <div class="container header-inner">
-        <a class="brand" href="/">
-          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-            <rect width="32" height="32" rx="9" class="brand-bg"/>
-            <path d="M6 20c3-6 7-9 10-9s7 3 10 9M10 20v-4m6 4v-9m6 9v-4" class="brand-line"/>
-          </svg>
-          <span>LifeBridge</span>
-        </a>
-        <p class="header-note">Powered by Gemini · verified on our server</p>
+    <div class="shell">
+      <div class="hero-slot" id="top" data-hero-slot>
+        <div class="hero-frame">
+          <div class="hero-ring">
+            <header class="hero">
+              <canvas class="hero-sky" data-scene="sky" aria-hidden="true"></canvas>
+
+              <div class="topbar">
+                <a class="brand" href="/" aria-label="LifeBridge home">
+                  <svg class="brand-mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+                    <rect x="1" y="1" width="22" height="22" rx="6" fill="#0d0d0d"/>
+                    <path d="M5 16.5c1.6-4.4 4-6.6 7-6.6s5.4 2.2 7 6.6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M8.4 16.5v-2.6M12 16.5V9.9M15.6 16.5v-2.6" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="12" cy="6" r="1.3" fill="#fff"/>
+                  </svg>
+                  <span>LifeBridge</span>
+                </a>
+
+                <nav class="pill-nav" aria-label="Sections" data-nav-root>
+                  <a class="pill-link" href="#top" data-nav="overview" aria-current="true" aria-label="Overview">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><rect x="2" y="2" width="5" height="5" rx="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.4"/><rect x="9" y="9" width="5" height="5" rx="1.4"/></svg>
+                  </a>
+                  <a class="pill-link" href="#features" data-nav="voice" data-tab="voice" aria-label="Voice">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                  </a>
+                  <a class="pill-link" href="#features" data-nav="photos" data-tab="photos" aria-label="Photos &amp; PDFs">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><rect x="2" y="2.5" width="12" height="11" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="6" cy="6.3" r="1.3"/><path d="M3 12l3.4-3.2 2.4 2.1 1.8-1.5L13 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                  </a>
+                  <a class="pill-link" href="#features" data-nav="verify" data-tab="verify" aria-label="Verification">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M8 1.5l5.2 2v4c0 3.3-2.2 5.8-5.2 7-3-1.2-5.2-3.7-5.2-7v-4z"/><path d="M5.6 8l1.7 1.7 3.2-3.4" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </a>
+                  <a class="pill-link" href="#features" data-nav="live" data-tab="live" aria-label="Live check">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M2.4 8h11.2M8 2c1.8 1.7 2.6 3.7 2.6 6S9.8 12.3 8 14C6.2 12.3 5.4 10.3 5.4 8S6.2 3.7 8 2z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+                  </a>
+                </nav>
+
+                <a class="btn btn-light topbar-cta" href="/app">Open workspace</a>
+              </div>
+
+              <div class="hero-main">
+                <p class="badge">
+                  <span>Powered by</span>
+                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><rect width="16" height="16" rx="3" fill="#0d0d0d"/><path d="M8 3.2c.35 2.6 2.2 4.45 4.8 4.8-2.6.35-4.45 2.2-4.8 4.8-.35-2.6-2.2-4.45-4.8-4.8 2.6-.35 4.45-2.2 4.8-4.8z" fill="#fff"/></svg>
+                  <span>Gemini</span>
+                </p>
+                <h1 class="display">
+                  <span class="line">Messy input in.</span>
+                  <span class="line">Verified, life-saving</span>
+                  <span class="line">action out.</span>
+                </h1>
+                <a class="btn btn-dark hero-cta" href="/app">Create an Action Card</a>
+              </div>
+
+              <p class="banner-title display" aria-hidden="true">
+                <span class="line">Turn panic</span>
+                <span class="line">into a plan,</span>
+                <span class="line">in seconds</span>
+              </p>
+
+              <div class="preview glass" aria-hidden="true">
+                <div class="preview-head">
+                  <div class="chip-user">
+                    <span class="avatar avatar-ink">LB</span>
+                    <span><b>LifeBridge</b><small>my workspace</small></span>
+                  </div>
+                  <p class="board"><span>Board:</span> Action Card <sup>(1)</sup></p>
+                </div>
+                <div class="preview-grid">
+                  <div class="preview-stats">
+                    <div class="mini-card">
+                      <p class="mini-label"><span>Verification</span><span>3</span></p>
+                      <div class="stat-row">
+                        <p class="stat stat-green"><b>8</b><small>facts grounded</small></p>
+                        <p class="stat"><b>5</b><small>actions</small></p>
+                        <p class="stat stat-green"><b>100%</b><small>grounding</small></p>
+                      </div>
+                    </div>
+                    <div class="mini-card">
+                      <p class="mini-label"><span>Severity</span><span>1</span></p>
+                      <p class="stat-big">Critical</p>
+                    </div>
+                  </div>
+                  <div class="preview-rail">
+                    <span class="rail-dot rail-on">
+                      <svg viewBox="0 0 16 16" width="11" height="11"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" fill="#fff"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>
+                    </span>
+                    <span class="rail-dot">
+                      <svg viewBox="0 0 16 16" width="11" height="11"><rect x="2" y="2.5" width="12" height="11" rx="2.4" fill="none" stroke="#fff" stroke-width="1.6"/><circle cx="6" cy="6.3" r="1.3" fill="#fff"/></svg>
+                    </span>
+                    <span class="rail-dot">
+                      <svg viewBox="0 0 16 16" width="11" height="11"><path d="M4 1.8h5.5L12.5 5v9.2H4z" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+                    </span>
+                    <span class="rail-dot rail-alert">!</span>
+                  </div>
+                  <div class="preview-chat">
+                    <div class="bubble">
+                      <p class="bubble-head"><b>Voice note</b><small>0:14 · Hinglish</small></p>
+                      <p>Bhaiya jaldi help karo!! accident ho gaya highway pe, ek aadmi bleeding…</p>
+                    </div>
+                    <p class="tag-chip">Structuring with Gemini</p>
+                    <div class="bubble bubble-reply">
+                      <p>Call 108 — Ambulance ✅</p>
+                      <p>Severity: Critical</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <canvas class="hero-hill" data-scene="hill" aria-hidden="true"></canvas>
+            </header>
+          </div>
+        </div>
       </div>
-    </header>
 
-    <main id="main" class="container" tabindex="-1">
-      <div class="hero">
-        <h1>Turn messy information into a verified action plan</h1>
-        <p class="lead">Speak, type, or upload photos and documents in any language. LifeBridge structures them into an Action Card with prioritised steps, evidence for every fact, and emergency numbers from a verified directory.</p>
-      </div>
+      <main id="main" tabindex="-1">
+        <section class="features" id="features" aria-labelledby="features-title" data-tabs>
+          <h2 class="visually-hidden" id="features-title">What LifeBridge does</h2>
 
-      <div class="layout">
-        <section class="panel intake-panel" aria-labelledby="intake-heading">
-          <h2 id="intake-heading" class="panel-title">Intake</h2>
-          <form id="intake-form" class="intake-form" novalidate>
-            <div class="field">
-              <label for="intake-text">Describe the situation</label>
-              <p id="intake-text-hint" class="hint">Any language or mix of languages. Paste messages, notes or medical history as they are.</p>
-              <textarea id="intake-text" name="text" rows="8" maxlength="10000" spellcheck="true" aria-describedby="intake-text-hint char-count"></textarea>
-              <p id="char-count" class="hint counter">0 / 10,000 characters</p>
-            </div>
-
-            <fieldset class="group">
-              <legend>Try a sample</legend>
-              <div id="sample-list" class="sample-list"></div>
-            </fieldset>
-
-            <fieldset class="group">
-              <legend>Voice, photos and documents</legend>
-              <div class="record-row">
-                <button type="button" id="record-btn" class="btn btn-secondary" aria-pressed="false" aria-describedby="record-hint">
-                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3ZM19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg>
-                  <span id="record-label">Record voice note</span>
+          <div class="feature-copy" data-reveal>
+            <div class="tabs-row">
+              <div class="tablist" role="tablist" aria-label="LifeBridge capabilities">
+                <button class="tab" type="button" role="tab" id="tab-voice" aria-controls="panel-voice" aria-selected="true" data-key="voice">
+                  <span class="tab-title">Voice</span>
+                  <span class="tab-sub">Any language</span>
+                  <span class="tab-progress" aria-hidden="true"></span>
                 </button>
-                <span id="record-timer" class="record-timer" hidden>Recording 0:00 / 2:00</span>
+                <button class="tab" type="button" role="tab" id="tab-photos" aria-controls="panel-photos" aria-selected="false" tabindex="-1" data-key="photos">
+                  <span class="tab-title">Photos &amp; PDFs</span>
+                  <span class="tab-sub">Prescriptions, reports</span>
+                  <span class="tab-progress" aria-hidden="true"></span>
+                </button>
+                <button class="tab" type="button" role="tab" id="tab-verify" aria-controls="panel-verify" aria-selected="false" tabindex="-1" data-key="verify">
+                  <span class="tab-title">Verification</span>
+                  <span class="tab-sub">Evidence for every fact</span>
+                  <span class="tab-progress" aria-hidden="true"></span>
+                </button>
+                <button class="tab" type="button" role="tab" id="tab-live" aria-controls="panel-live" aria-selected="false" tabindex="-1" data-key="live">
+                  <span class="tab-title">Live check</span>
+                  <span class="tab-sub">Google Search grounding</span>
+                  <span class="tab-progress" aria-hidden="true"></span>
+                </button>
               </div>
-              <p id="record-hint" class="hint">Press once to start and again to stop (up to 2 minutes). The recording is attached as a file below.</p>
-
-              <div class="field">
-                <label for="file-input">Add photos, PDFs or audio</label>
-                <p id="file-hint" class="hint">Up to 4 files, 5 MB each: JPEG, PNG, WEBP, PDF or audio. Large photos are resized on your device.</p>
-                <input type="file" id="file-input" name="files" multiple accept="image/jpeg,image/png,image/webp,application/pdf,audio/*" aria-describedby="file-hint">
-              </div>
-              <ul id="file-list" class="file-list" aria-label="Attached files"></ul>
-            </fieldset>
-
-            <fieldset class="group">
-              <legend>Output and context</legend>
-              <div class="field-grid">
-                <div class="field">
-                  <label for="language-select">Output language</label>
-                  <select id="language-select" name="language">
-                    <option value="en">English</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label for="country-select">Country</label>
-                  <select id="country-select" name="country" aria-describedby="country-hint">
-                    <option value="IN">India — emergency 112</option>
-                  </select>
-                  <p id="country-hint" class="hint">Used to pick verified emergency numbers.</p>
-                </div>
-              </div>
-              <div class="check">
-                <input type="checkbox" id="share-location" name="shareLocation" aria-describedby="location-hint">
-                <label for="share-location">Share my location for nearby services</label>
-              </div>
-              <p id="location-hint" class="hint check-hint">Asked only when you submit. Rounded to about 100 m and never stored.</p>
-              <div class="check">
-                <input type="checkbox" id="live-check" name="liveCheck" aria-describedby="live-hint">
-                <label for="live-check">Cross-check with live web (Google Search)</label>
-              </div>
-              <p id="live-hint" class="hint check-hint">Useful for forwarded warnings and news. Adds a few seconds.</p>
-            </fieldset>
-
-            <button type="submit" id="submit-btn" class="btn btn-primary btn-block" aria-disabled="false">Create Action Card</button>
-            <p id="status" class="status" role="status" aria-live="polite"></p>
-            <div id="error" class="error-box" role="alert">
-              <p id="error-text" class="error-text"></p>
-              <button type="button" id="retry-btn" class="btn btn-secondary" hidden>Try again</button>
+              <button class="autoplay" type="button" data-autoplay-toggle aria-label="Pause automatic tab rotation">
+                <svg class="icon-pause" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><rect x="3.5" y="2.5" width="3" height="11" rx="1"/><rect x="9.5" y="2.5" width="3" height="11" rx="1"/></svg>
+                <svg class="icon-play" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path d="M4.5 2.6v10.8L13 8z"/></svg>
+              </button>
             </div>
-          </form>
-        </section>
 
-        <section id="result-panel" class="panel result-panel" aria-labelledby="result-heading">
-          <div class="result-head">
-            <h2 id="result-heading" class="panel-title">Action Card</h2>
-            <div id="card-toolbar" class="toolbar" role="group" aria-label="Action Card tools" hidden>
-              <button type="button" id="speak-btn" class="btn btn-ghost" aria-pressed="false">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5 6 9H2v6h4l5 4V5ZM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
-                <span>Read aloud</span>
-              </button>
-              <button type="button" id="copy-btn" class="btn btn-ghost">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 9h11v11H9zM5 15H4V4h11v1"/></svg>
-                <span>Copy SMS text</span>
-              </button>
-              <button type="button" id="download-btn" class="btn btn-ghost">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>
-                <span>Download JSON</span>
-              </button>
-              <button type="button" id="print-btn" class="btn btn-ghost">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
-                <span>Print</span>
-              </button>
+            <div class="panel" role="tabpanel" id="panel-voice" aria-labelledby="tab-voice">
+              <h3 class="panel-title display">Speak it</h3>
+              <p>Record a panicked voice note in any language. Gemini transcribes it and structures what happened, who is hurt and what to do first.</p>
+              <a class="btn btn-dark" href="/app">Open workspace</a>
+            </div>
+            <div class="panel" role="tabpanel" id="panel-photos" aria-labelledby="tab-photos" hidden>
+              <h3 class="panel-title display">Snap it</h3>
+              <p>Photograph a prescription or upload a stack of medical-history PDFs. They become structured facts you can hand to a doctor.</p>
+              <a class="btn btn-dark" href="/app">Open workspace</a>
+            </div>
+            <div class="panel" role="tabpanel" id="panel-verify" aria-labelledby="tab-verify" hidden>
+              <h3 class="panel-title display">Trust it</h3>
+              <p>Every fact carries a quote checked against your input. Emergency numbers come from a verified directory, and doses or numbers the AI invented are removed.</p>
+              <a class="btn btn-dark" href="/app">Open workspace</a>
+            </div>
+            <div class="panel" role="tabpanel" id="panel-live" aria-labelledby="tab-live" hidden>
+              <h3 class="panel-title display">Check it</h3>
+              <p>Got a forwarded flood or traffic alert? LifeBridge cross-checks it against live sources with Google Search and flags contradictions.</p>
+              <a class="btn btn-dark" href="/app">Open workspace</a>
             </div>
           </div>
 
-          <div id="card-region" class="card-region" aria-busy="false">
-            <div id="empty-state" class="empty-state">
-              <p class="empty-lead">Your Action Card will appear here.</p>
-              <ol class="steps">
-                <li><strong>Intake</strong> <span>Type, speak, or upload photos and PDFs — messy is fine.</span></li>
-                <li><strong>Gemini structures</strong> <span>Facts with evidence quotes, severity, and prioritised actions.</span></li>
-                <li><strong>Server verifies</strong> <span>Every fact is checked against your input. Phone numbers come only from a verified directory.</span></li>
-              </ol>
+          <div class="feature-visual" data-reveal aria-hidden="true">
+            <canvas class="visual-sky" data-scene="sky"></canvas>
+
+            <div class="scene glass is-active" data-scene-key="voice">
+              <div class="mode-row"><span class="mode on"></span><span class="mode"></span><span class="mode"></span><span class="mode"></span></div>
+              <div class="bubble">
+                <p class="bubble-head"><span class="avatar">P</span><b>Voice note</b><small>0:14</small></p>
+                <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              </div>
+              <p class="tag-chip">Language: Hinglish</p>
+              <div class="bubble bubble-reply">
+                <p>“Bhaiya jaldi help karo!! accident ho gaya…”</p>
+                <p class="muted">Road accident on the highway. One person bleeding, conscious.</p>
+              </div>
             </div>
+
+            <div class="scene glass" data-scene-key="photos">
+              <div class="rx">
+                <span class="rx-mark">Rx</span>
+                <span class="rx-line"></span><span class="rx-line short"></span><span class="rx-line"></span><span class="rx-line shorter"></span>
+              </div>
+              <ul class="fact-list">
+                <li><span><small>Medication</small>Metformin</span><em>Read from image</em></li>
+                <li><span><small>Allergy</small>Penicillin</span><em>Read from image</em></li>
+                <li><span><small>Condition</small>Type 2 diabetes</span><em>Read from image</em></li>
+              </ul>
+            </div>
+
+            <div class="scene glass" data-scene-key="verify">
+              <p class="scene-title">Verification engine</p>
+              <ul class="check-list">
+                <li><span class="tick"></span><span>Evidence grounding</span><b>100%</b></li>
+                <li><span class="tick"></span><span>Phone number guard</span><b>Directory</b></li>
+                <li><span class="tick"></span><span>Dosage guard</span><b>Passed</b></li>
+                <li><span class="tick"></span><span>Critical escalation</span><b>Call 108</b></li>
+              </ul>
+            </div>
+
+            <div class="scene glass" data-scene-key="live">
+              <div class="bubble">
+                <p class="bubble-head"><b>Forwarded alert</b><small>forwarded many times</small></p>
+                <p>“Dam gates open tonight, evacuate the city now!!”</p>
+              </div>
+              <p class="status-pill">Contradicted</p>
+              <ul class="source-list">
+                <li><span class="src-dot">D</span><span><b>District administration bulletin</b><small>No release scheduled today</small></span></li>
+                <li><span class="src-dot">S</span><span><b>State disaster management update</b><small>Reservoir levels normal</small></span></li>
+              </ul>
+            </div>
+
+            <canvas class="visual-rock" data-scene="rock"></canvas>
           </div>
         </section>
-      </div>
-    </main>
+      </main>
 
-    <footer class="site-footer">
-      <div class="container">
-        <p><strong>LifeBridge is not a substitute for emergency services or medical professionals.</strong> If someone is in danger, call your local emergency number now.</p>
-        <p>Your input is processed in memory and never stored. Built for Hack2skill PromptWars.</p>
-      </div>
-    </footer>
+      <footer class="footer">
+        <p>LifeBridge is not a substitute for emergency services. In danger, call your local emergency number first.</p>
+        <nav aria-label="Footer">
+          <a href="/app">Workspace</a>
+          <a href="https://github.com/Dronzer2code/PW-aec" rel="noopener">GitHub</a>
+        </nav>
+      </footer>
+    </div>
   </body>
 </html>

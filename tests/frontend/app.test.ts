@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCard } from './fixtures.js';
 import { FakeMediaRecorder, cleanNavigator, installFakeMic } from './fakes.js';
 
-const INDEX_HTML = readFileSync(resolve(process.cwd(), 'public/index.html'), 'utf8');
+const APP_HTML = readFileSync(resolve(process.cwd(), 'public/app.html'), 'utf8');
 
 const CONFIG = {
   languages: [
@@ -35,7 +35,7 @@ const byId = <T extends HTMLElement = HTMLElement>(id: string): T => {
 };
 
 async function boot(analyze: Analyze, config: unknown = CONFIG) {
-  document.body.innerHTML = new DOMParser().parseFromString(INDEX_HTML, 'text/html').body.innerHTML;
+  document.body.innerHTML = new DOMParser().parseFromString(APP_HTML, 'text/html').body.innerHTML;
   const analyzeMock = vi.fn(analyze);
   const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
     if (url === '/api/config') return config instanceof Response ? config : json(200, config);
@@ -85,6 +85,95 @@ describe('app.js', () => {
     expect(byId('char-count').textContent).toMatch(/^\d{3} \/ 10,000 characters$/);
   });
 
+  it('shows the verified directory for the selected country', async () => {
+    await boot(() => json(200, makeCard()));
+    expect(byId('directory-title').textContent).toBe('Emergency numbers');
+    expect(byId('directory-slot').querySelectorAll('a.pc-row')).toHaveLength(7);
+    expect(byId('country-emergency').textContent).toBe('Emergency 112');
+    const country = byId<HTMLSelectElement>('country-select');
+    country.value = 'US';
+    country.dispatchEvent(new Event('change'));
+    expect(byId('country-emergency').textContent).toBe('Emergency 911');
+    expect(Array.from(byId('directory-slot').querySelectorAll('a')).map((a) => a.getAttribute('href'))).toEqual(['tel:911']);
+    expect(byId('directory-slot').textContent).toContain('United States · Verified directory');
+  });
+
+  it('opens the sample menu as an accessible menu button', async () => {
+    await boot(() => json(200, makeCard()));
+    const btn = byId<HTMLButtonElement>('sample-btn');
+    const menu = byId('sample-list');
+    const items = () => Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+    const key = (target: Element, k: string) => target.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    expect(menu.hidden).toBe(true);
+    btn.click();
+    expect(btn.getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(items()[0]);
+    key(menu, 'ArrowUp');
+    expect(document.activeElement).toBe(items()[5]);
+    key(menu, 'ArrowDown');
+    expect(document.activeElement).toBe(items()[0]);
+    key(menu, 'End');
+    expect(document.activeElement).toBe(items()[5]);
+    key(menu, 'Home');
+    expect(document.activeElement).toBe(items()[0]);
+    key(menu, 'Escape');
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(btn);
+    key(btn, 'ArrowUp');
+    expect(document.activeElement).toBe(items()[5]);
+    key(menu, 'Tab');
+    expect(menu.hidden).toBe(true);
+    key(btn, 'ArrowDown');
+    document.body.click();
+    expect(menu.hidden).toBe(true);
+    btn.click();
+    key(document.body, 'Escape');
+    expect(menu.hidden).toBe(true);
+    btn.click();
+    items()[3]?.click();
+    expect(menu.hidden).toBe(true);
+    await vi.waitFor(() => expect(byId('status').textContent).toContain('Sample loaded: Chest pain'));
+    expect(document.activeElement?.id).toBe('intake-text');
+  });
+
+  it('runs the sidebar: samples, emergency numbers, verification dialog and mobile drawer', async () => {
+    await boot(() => json(200, makeCard()));
+    const menuBtn = byId('menu-btn');
+    const sidebar = byId('sidebar');
+    menuBtn.click();
+    expect(sidebar.classList.contains('is-open')).toBe(true);
+    expect(menuBtn.getAttribute('aria-expanded')).toBe('true');
+    expect(byId('sidebar-backdrop').hidden).toBe(false);
+    expect(sidebar.contains(document.activeElement)).toBe(true);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(sidebar.classList.contains('is-open')).toBe(false);
+    expect(document.activeElement).toBe(menuBtn);
+    menuBtn.click();
+    byId('sidebar-backdrop').click();
+    expect(menuBtn.getAttribute('aria-expanded')).toBe('false');
+
+    byId('nav-samples').click();
+    expect(byId('sample-list').hidden).toBe(false);
+    expect(document.activeElement?.getAttribute('role')).toBe('menuitem');
+
+    byId('nav-emergency').click();
+    expect(document.activeElement?.id).toBe('directory-title');
+
+    const dialog = byId<HTMLDialogElement>('verify-dialog');
+    const opener = byId('nav-verify');
+    opener.focus();
+    opener.click();
+    expect(dialog.open).toBe(true);
+    expect(dialog.textContent).toContain('never from the AI');
+    dialog.querySelector<HTMLButtonElement>('.dialog-foot [data-close]')?.click();
+    expect(dialog.open).toBe(false);
+    expect(document.activeElement).toBe(opener);
+    opener.click();
+    dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
+    expect(dialog.open).toBe(false);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+  });
+
   it('falls back to defaults when /api/config fails', async () => {
     await boot(() => json(200, makeCard()), new Response('nope', { status: 500 }));
     expect(byId('status').textContent).toContain('Using defaults');
@@ -120,8 +209,14 @@ describe('app.js', () => {
   it('asks for input instead of sending an empty request', async () => {
     const analyze = await boot(() => json(200, makeCard()));
     byId<HTMLFormElement>('intake-form').requestSubmit();
-    expect(byId('error-text').textContent).toContain('Describe the situation');
+    expect(byId('intake-error').textContent).toContain('Describe the situation');
+    expect(byId('intake-error').hidden).toBe(false);
+    expect(byId('intake-text').getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement?.id).toBe('intake-text');
     expect(analyze).not.toHaveBeenCalled();
+    typeText('help');
+    expect(byId('intake-error').hidden).toBe(true);
+    expect(byId('intake-text').getAttribute('aria-invalid')).toBe('false');
   });
 
   it('sends the Intake and renders the Action Card with focus on its heading', async () => {
@@ -143,9 +238,57 @@ describe('app.js', () => {
     });
     expect(byId('card-region').querySelector('article.action-card')).not.toBeNull();
     expect(document.activeElement?.id).toBe('card-title');
-    expect(byId('card-toolbar').hidden).toBe(false);
+    expect(byId('card-toolbar')).not.toBeNull();
+    expect(byId('summary-slot').hidden).toBe(false);
+    expect(byId('directory-slot').hidden).toBe(true);
+    expect(byId('summary-title').textContent).toBe('Road accident');
+    expect(byId('crumb-current').textContent).toBe('Road accident');
+    expect(byId('view-tabs').hidden).toBe(false);
+    expect(byId('tab-card').getAttribute('aria-selected')).toBe('true');
+    expect(byId('panel-intake').hidden).toBe(true);
     expect(byId('status').textContent).toContain('Action Card ready. Severity Critical.');
     expect(byId('submit-btn').getAttribute('aria-disabled')).toBe('false');
+  });
+
+  it('switches between the Action Card and Intake tabs with click and arrow keys', async () => {
+    await boot(() => json(200, makeCard()));
+    await submitText('accident');
+    const key = (k: string) => byId('view-tabs').dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    byId('tab-intake').click();
+    expect(byId('panel-intake').hidden).toBe(false);
+    expect(byId('panel-card').hidden).toBe(true);
+    expect(byId('tab-intake').tabIndex).toBe(0);
+    expect(byId('tab-card').tabIndex).toBe(-1);
+    key('ArrowLeft');
+    expect(byId('tab-card').getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement?.id).toBe('tab-card');
+    key('ArrowRight');
+    expect(document.activeElement?.id).toBe('tab-intake');
+    key('Home');
+    expect(document.activeElement?.id).toBe('tab-card');
+    key('End');
+    expect(document.activeElement?.id).toBe('tab-intake');
+    key('a');
+    expect(document.activeElement?.id).toBe('tab-intake');
+  });
+
+  it('clears the workspace back to a blank Intake', async () => {
+    installFakeMic();
+    await boot(() => json(200, makeCard()));
+    await submitText('accident');
+    byId('record-btn').click();
+    await vi.waitFor(() => expect(byId('record-btn').getAttribute('aria-pressed')).toBe('true'));
+    byId('clear-btn').click();
+    await vi.waitFor(() => expect(byId('status').textContent).toContain('Cleared'));
+    expect(byId<HTMLTextAreaElement>('intake-text').value).toBe('');
+    expect(byId('file-list').children).toHaveLength(0);
+    expect(byId('view-tabs').hidden).toBe(true);
+    expect(byId('panel-intake').hidden).toBe(false);
+    expect(byId('summary-slot').hidden).toBe(true);
+    expect(byId('directory-slot').hidden).toBe(false);
+    expect(byId('crumb-current').textContent).toBe('New');
+    expect(byId('card-region').children).toHaveLength(0);
+    expect(document.activeElement?.id).toBe('intake-text');
   });
 
   it('continues without location when it is unavailable', async () => {
@@ -194,7 +337,8 @@ describe('app.js', () => {
     expect(byId('error-text').textContent).toContain('not configured');
     expect(byId('retry-btn').hidden).toBe(true);
     expect(byId('card-region').querySelector('a.call-btn')?.getAttribute('href')).toBe('tel:911');
-    expect(byId('card-toolbar').hidden).toBe(true);
+    expect(document.getElementById('card-toolbar')).toBeNull();
+    expect(byId('directory-slot').hidden).toBe(false);
   });
 
   it('shows validation details without retry and keeps the empty state', async () => {
@@ -202,7 +346,18 @@ describe('app.js', () => {
     await submitText('x');
     expect(byId('error-text').textContent).toContain('(text: too long; files.0: bad type)');
     expect(byId('retry-btn').hidden).toBe(true);
-    expect(byId('empty-state')).not.toBeNull();
+    expect(byId('view-tabs').hidden).toBe(true);
+    expect(byId('panel-intake').hidden).toBe(false);
+  });
+
+  it('keeps the previous Action Card when a later request is rejected', async () => {
+    let n = 0;
+    await boot(() => (n++ === 0 ? json(200, makeCard()) : apiError(400, 'VALIDATION_ERROR')));
+    await submitText('accident');
+    await submitText('again');
+    expect(byId('error-text').textContent).toContain('(VALIDATION_ERROR message)');
+    expect(byId('card-region').querySelector('#card-title')?.textContent).toBe('Road accident');
+    expect(byId('summary-slot').hidden).toBe(false);
   });
 
   it('shows retry for rate limits only after the Retry-After wait', async () => {
@@ -241,6 +396,13 @@ describe('app.js', () => {
     expect(byId('retry-btn').hidden).toBe(false);
   });
 
+  it('opens the hidden file picker from the attach button', async () => {
+    await boot(() => json(200, makeCard()));
+    const pick = vi.spyOn(byId<HTMLInputElement>('file-input'), 'click').mockImplementation(() => undefined);
+    byId('attach-btn').click();
+    expect(pick).toHaveBeenCalled();
+  });
+
   it('attaches, lists and removes files', async () => {
     await boot(() => json(200, makeCard()));
     const input = byId<HTMLInputElement>('file-input');
@@ -251,7 +413,7 @@ describe('app.js', () => {
     expect(byId('error-text').textContent).toContain('a.txt: unsupported type');
     byId('file-list').querySelector<HTMLButtonElement>('button[aria-label="Remove scan.pdf"]')?.click();
     expect(byId('file-list').querySelectorAll('li')).toHaveLength(0);
-    expect(document.activeElement).toBe(input);
+    expect(document.activeElement?.id).toBe('attach-btn');
     expect(byId('status').textContent).toBe('Removed scan.pdf.');
   });
 
@@ -352,7 +514,9 @@ describe('app.js', () => {
 
     byId('print-btn').click();
     expect(print).toHaveBeenCalled();
+    byId('tab-intake').click();
     window.dispatchEvent(new Event('beforeprint'));
+    expect(byId('panel-card').hidden).toBe(false);
     expect(Array.from(byId('card-region').querySelectorAll('details')).every((d) => d.open)).toBe(true);
     Reflect.deleteProperty(URL, 'createObjectURL');
     Reflect.deleteProperty(URL, 'revokeObjectURL');

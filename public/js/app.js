@@ -1,8 +1,11 @@
 /**
- * LifeBridge UI controller: wires the Intake form to POST /api/analyze and shows the Action Card.
- * All card markup is built by render.js.
+ * LifeBridge workspace controller: wires the Intake form to POST /api/analyze and shows the Action Card.
+ * All card markup is built by render.js; this file owns state, events and focus.
  */
-import { buildPlainText, elementFactory, renderActionCard, renderEmergencyFallback, renderSkeleton, severityLabel } from './render.js';
+import {
+  buildPlainText, directoryFor, elementFactory, formatDomain, icon, renderActionCard, renderDirectoryCard,
+  renderEmergencyFallback, renderSkeleton, renderSummaryCard, severityLabel,
+} from './render.js';
 import { SAMPLES, drawSampleImage } from './samples.js';
 import { DEFAULT_LIMITS, downscaleImage, fileToBase64, formatBytes, normalizeMimeType, safeFileName, validateFiles } from './files.js';
 import { MAX_RECORDING_MS, describeMicError, isRecordingSupported, startRecording } from './recorder.js';
@@ -27,15 +30,17 @@ const RETRY = new Set(['AI_TIMEOUT', 'AI_BAD_OUTPUT', 'AI_UPSTREAM_ERROR', 'INTE
 
 const $ = (id) => document.getElementById(id);
 const e = elementFactory(document);
-const form = $('intake-form');
 const text = $('intake-text');
 const region = $('card-region');
-const emptyState = $('empty-state');
-const toolbar = $('card-toolbar');
 const submitBtn = $('submit-btn');
 const recordBtn = $('record-btn');
-const speakBtn = $('speak-btn');
 const retryBtn = $('retry-btn');
+const sampleBtn = $('sample-btn');
+const menu = $('sample-list');
+const menuBtn = $('menu-btn');
+const sidebar = $('sidebar');
+const dialog = $('verify-dialog');
+const tabs = { card: $('tab-card'), intake: $('tab-intake') };
 
 const state = {
   limits: { maxTextChars: 10_000, ...DEFAULT_LIMITS },
@@ -51,15 +56,33 @@ const state = {
   recording: null,
   busy: false,
   retryTimer: 0,
+  toastTimer: 0,
+  /** @type {Element | null} Element to refocus when the dialog closes. */
+  opener: null,
 };
 
-const announce = (msg) => { $('status').textContent = msg; };
+/** Polite announcement; also shown briefly as a toast for sighted users. */
+function announce(msg) {
+  const status = $('status');
+  status.textContent = msg;
+  status.classList.toggle('is-shown', Boolean(msg));
+  clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => status.classList.remove('is-shown'), 6000);
+}
+
 function showError(msg, retryAfterMs = -1) {
   clearTimeout(state.retryTimer);
   $('error-text').textContent = msg;
   $('error').classList.toggle('is-visible', Boolean(msg));
   retryBtn.hidden = true;
   if (retryAfterMs >= 0) state.retryTimer = setTimeout(() => { retryBtn.hidden = false; }, retryAfterMs);
+}
+
+/** Inline error state on the Situation field (Untitled-style error border + hint). */
+function setFieldError(msg) {
+  $('intake-error').textContent = msg;
+  $('intake-error').hidden = !msg;
+  text.setAttribute('aria-invalid', String(Boolean(msg)));
 }
 
 /* ---------- config ---------- */
@@ -78,7 +101,8 @@ async function loadConfig() {
     }
     if (Array.isArray(countries) && countries.length) {
       state.countries = countries;
-      $('country-select').replaceChildren(...countries.map((c) => new Option(`${c.name} — emergency ${c.emergency}`, c.code)));
+      $('country-select').replaceChildren(...countries.map((c) => new Option(c.name, c.code)));
+      renderDirectory();
     }
     if (Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0) state.timeoutMs = requestTimeoutMs;
     state.limits = { ...state.limits, ...limits };
@@ -92,6 +116,43 @@ async function loadConfig() {
 
 const selectedCountry = () => state.countries.find((c) => c.code === $('country-select').value) ?? DEFAULT_COUNTRY;
 
+/* ---------- views: tabs, side panel, breadcrumb ---------- */
+
+/** Shows the "card" or "intake" tab panel. */
+function showView(name, focusTab = false) {
+  for (const [key, tab] of Object.entries(tabs)) {
+    const on = key === name;
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+    $(`panel-${key}`).hidden = !on;
+  }
+  if (focusTab) tabs[name].focus();
+}
+
+function renderDirectory() {
+  const country = selectedCountry();
+  $('country-emergency').textContent = `Emergency ${country.emergency}`;
+  $('directory-slot').replaceChildren(renderDirectoryCard(country, directoryFor(country)));
+}
+
+/**
+ * Puts `content` (card, fallback, skeleton or nothing) in the card panel and syncs everything around it.
+ * @param {HTMLElement | null} content
+ * @param {object | null} card The Action Card behind `content`, if any.
+ */
+function setResult(content, card = null) {
+  stopSpeaking();
+  state.card = card;
+  region.replaceChildren(...(content ? [content] : []));
+  $('view-tabs').hidden = !content;
+  showView(content ? 'card' : 'intake');
+  $('crumb-current').textContent = card ? formatDomain(card.domain) : 'New';
+  $('summary-slot').replaceChildren(...(card ? [renderSummaryCard(card)] : []));
+  $('summary-slot').hidden = !card;
+  $('directory-slot').hidden = Boolean(card);
+  if (card) $('speak-btn').hidden = !('speechSynthesis' in window);
+}
+
 /* ---------- intake ---------- */
 
 function updateCounter() {
@@ -104,6 +165,7 @@ async function loadSample(sample) {
   $('live-check').checked = Boolean(sample.liveCheck);
   updateCounter();
   showError('');
+  setFieldError('');
   text.focus();
   let note = sample.liveCheck ? ' Live web check turned on.' : '';
   if (sample.image) {
@@ -117,20 +179,52 @@ async function loadSample(sample) {
   announce(`Sample loaded: ${sample.title}.${note}`);
 }
 
+/* Sample picker: WAI-ARIA menu button (arrows, Home/End, Esc returns focus, Tab closes). */
+const menuItems = () => Array.from(menu.querySelectorAll('[role="menuitem"]'));
+
+function setMenu(open, focusIndex = 0) {
+  menu.hidden = !open;
+  sampleBtn.setAttribute('aria-expanded', String(open));
+  if (open) menuItems().at(focusIndex)?.focus();
+}
+
 function renderSamples() {
-  $('sample-list').replaceChildren(...SAMPLES.map((sample) => {
-    const btn = e('button', { type: 'button', class: 'btn btn-chip', text: sample.title });
-    btn.addEventListener('click', () => loadSample(sample));
-    return btn;
+  menu.replaceChildren(...SAMPLES.map((sample) => {
+    const item = e('button', { type: 'button', role: 'menuitem', tabindex: '-1', class: 'menu-item', text: sample.title });
+    item.addEventListener('click', () => {
+      setMenu(false);
+      loadSample(sample);
+    });
+    return item;
   }));
 }
 
+function onMenuKey(event) {
+  const items = menuItems();
+  const index = items.indexOf(document.activeElement);
+  const move = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: -1 }[event.key];
+  if (move !== undefined) {
+    event.preventDefault();
+    items.at(move % items.length)?.focus();
+  } else if (event.key === 'Escape') {
+    event.stopPropagation();
+    setMenu(false);
+    sampleBtn.focus();
+  } else if (event.key === 'Tab') {
+    setMenu(false);
+  }
+}
+
 function renderFiles() {
-  $('file-list').replaceChildren(...state.files.map(({ id, file }) => {
-    const remove = e('button', { type: 'button', class: 'btn btn-icon', 'aria-label': `Remove ${file.name}`, text: '×' });
+  $('file-list').replaceChildren(...state.files.map(({ id, file, mimeType }) => {
+    const remove = e('button', { type: 'button', class: 'tool-btn file-remove', 'aria-label': `Remove ${file.name}` });
+    remove.append(icon(document, 'trash'));
     remove.addEventListener('click', () => removeFile(id));
+    const kind = mimeType.split('/')[0] === 'application' ? 'PDF' : mimeType.split('/')[0];
     return e('li', { class: 'file-chip' },
-      e('span', { class: 'file-name', text: file.name }), e('span', { class: 'file-size', text: formatBytes(file.size) }), remove);
+      e('span', { class: 'file-icon', 'aria-hidden': 'true' }, e('span', { text: kind === 'PDF' ? 'PDF' : kind === 'image' ? 'IMG' : 'AUD' })),
+      e('span', { class: 'file-text' }, e('span', { class: 'file-name', text: file.name }), e('span', { class: 'file-size', text: formatBytes(file.size) })),
+      remove);
   }));
 }
 
@@ -138,12 +232,13 @@ function removeFile(id) {
   const index = state.files.findIndex((f) => f.id === id);
   const [removed] = state.files.splice(index, 1);
   renderFiles();
-  ($('file-list').querySelectorAll('button')[Math.min(index, state.files.length - 1)] ?? $('file-input')).focus();
+  ($('file-list').querySelectorAll('button')[Math.min(index, state.files.length - 1)] ?? $('attach-btn')).focus();
   announce(`Removed ${removed.file.name}.`);
 }
 
 async function addFiles(fileList) {
   showError('');
+  setFieldError('');
   const prepared = await Promise.all(Array.from(fileList, (f) =>
     normalizeMimeType(f.type)?.startsWith('image/') ? downscaleImage(f).catch(() => f) : f));
   const { accepted, errors } = validateFiles(prepared, state.files.length, state.limits);
@@ -266,62 +361,79 @@ function setBusy(busy) {
   region.setAttribute('aria-busy', String(busy));
 }
 
-function showCard(card) {
-  stopSpeaking();
-  state.card = card;
-  region.replaceChildren(card ? renderActionCard(card) : emptyState);
-  toolbar.hidden = !card;
-}
-
-function handleFailure({ code, message = '', details = [], requestId, retryAfterMs = 0 }) {
+function handleFailure({ code, message = '', details = [], requestId, retryAfterMs = 0 }, previous) {
   const known = Object.hasOwn(ERRORS, code) ? code : 'INTERNAL';
   const info = known === 'VALIDATION_ERROR' ? (details.length ? details.join('; ') : message).slice(0, 200) : '';
   const msg = `${ERRORS[known]}${info ? ` (${info})` : ''}${requestId ? ` Reference: ${requestId}.` : ''}`;
   showError(msg, RETRY.has(known) ? (known === 'RATE_LIMITED' ? retryAfterMs : 0) : -1);
   announce('');
-  if (!FALLBACK.has(known)) return showCard(state.card);
-  showCard(null);
-  region.replaceChildren(renderEmergencyFallback(selectedCountry(), 'We could not create an Action Card. If anyone is in danger, call now.'));
+  if (FALLBACK.has(known)) {
+    setResult(renderEmergencyFallback(selectedCountry(), 'We could not create an Action Card. If anyone is in danger, call now.'));
+  } else {
+    setResult(previous && renderActionCard(previous), previous);
+  }
 }
 
 async function submit() {
   if (state.busy) return;
   showError('');
   if (!text.value.trim() && !state.files.length && !state.recording) {
-    showError('Describe the situation, record a voice note, or attach a file first.');
+    showView('intake');
+    setFieldError('Describe the situation, record a voice note, or attach a file first.');
     return text.focus();
   }
+  setFieldError('');
   setBusy(true);
+  const previous = state.card;
   if (state.recording) {
     state.recording.stop();
     await state.recording.attached;
   }
   announce('Analyzing your input. This usually takes 5–20 seconds…');
-  toolbar.hidden = true;
-  region.replaceChildren(renderSkeleton());
+  setResult(renderSkeleton());
   try {
     const result = await postAnalyze(await buildRequest());
-    if (!result.card) return handleFailure(result);
-    showCard(result.card);
+    if (!result.card) return handleFailure(result, previous);
+    setResult(renderActionCard(result.card), result.card);
     $('card-title')?.focus();
     announce(`Action Card ready. Severity ${severityLabel(result.card.severity)}. ${result.card.summary ?? ''}`);
   } catch {
-    handleFailure({ code: 'INTERNAL' });
+    handleFailure({ code: 'INTERNAL' }, previous);
   } finally {
     setBusy(false);
   }
 }
 
-/* ---------- toolbar ---------- */
+/** Resets the workspace to a blank Intake (language and country are kept). */
+async function clearAll() {
+  if (state.busy) return;
+  if (state.recording) {
+    state.recording.stop();
+    await state.recording.attached;
+  }
+  text.value = '';
+  state.files = [];
+  $('live-check').checked = false;
+  $('share-location').checked = false;
+  renderFiles();
+  updateCounter();
+  showError('');
+  setFieldError('');
+  setResult(null);
+  text.focus();
+  announce('Cleared. Start a new Action Card.');
+}
+
+/* ---------- card tools ---------- */
 
 /** Toggle pattern: accessible name stays "Read aloud"; aria-pressed shows whether it is speaking. */
 function stopSpeaking() {
   globalThis.speechSynthesis?.cancel();
-  speakBtn.setAttribute('aria-pressed', 'false');
+  $('speak-btn')?.setAttribute('aria-pressed', 'false');
 }
 
 function toggleSpeaking() {
-  if (!state.card || speakBtn.getAttribute('aria-pressed') === 'true') return stopSpeaking();
+  if (!state.card || $('speak-btn').getAttribute('aria-pressed') === 'true') return stopSpeaking();
   const utterance = new SpeechSynthesisUtterance(buildPlainText(state.card));
   utterance.lang = state.card.meta?.outputLanguage ?? 'en';
   utterance.rate = 0.95;
@@ -329,7 +441,7 @@ function toggleSpeaking() {
   utterance.addEventListener('error', stopSpeaking);
   speechSynthesis.cancel();
   speechSynthesis.speak(utterance);
-  speakBtn.setAttribute('aria-pressed', 'true');
+  $('speak-btn').setAttribute('aria-pressed', 'true');
 }
 
 async function copySms() {
@@ -352,29 +464,117 @@ function downloadJson() {
   announce('Action Card downloaded as JSON.');
 }
 
+const TOOLS = { 'speak-btn': toggleSpeaking, 'copy-btn': copySms, 'download-btn': downloadJson, 'print-btn': () => window.print() };
+
+/* ---------- sidebar drawer and dialog ---------- */
+
+const drawerOpen = () => sidebar.classList.contains('is-open');
+
+function setDrawer(open) {
+  sidebar.classList.toggle('is-open', open);
+  $('sidebar-backdrop').hidden = !open;
+  menuBtn.setAttribute('aria-expanded', String(open));
+  if (open) sidebar.querySelector('a, button')?.focus();
+}
+
+function openDialog() {
+  state.opener = document.activeElement;
+  if (typeof dialog.showModal === 'function') dialog.showModal();
+  else dialog.setAttribute('open', '');
+  dialog.querySelector('[data-close]')?.focus();
+}
+
+function closeDialog() {
+  if (typeof dialog.close === 'function') dialog.close();
+  else dialog.removeAttribute('open');
+  /** @type {HTMLElement | null} */ (state.opener)?.focus?.();
+}
+
 /* ---------- init ---------- */
 
 renderSamples();
+renderDirectory();
 updateCounter();
 if (!isRecordingSupported()) {
   recordBtn.disabled = true;
   $('record-label').textContent = 'Voice recording not supported in this browser';
 }
-speakBtn.hidden = !('speechSynthesis' in window);
-text.addEventListener('input', updateCounter);
+text.addEventListener('input', () => {
+  updateCounter();
+  if (text.value.trim()) setFieldError('');
+});
 recordBtn.addEventListener('click', toggleRecording);
+$('attach-btn').addEventListener('click', () => $('file-input').click());
 $('file-input').addEventListener('change', async (event) => {
   await addFiles(event.target.files ?? []);
   event.target.value = '';
 });
-form.addEventListener('submit', (event) => {
+$('country-select').addEventListener('change', renderDirectory);
+$('intake-form').addEventListener('submit', (event) => {
   event.preventDefault();
   submit();
 });
 retryBtn.addEventListener('click', submit);
-speakBtn.addEventListener('click', toggleSpeaking);
-$('copy-btn').addEventListener('click', copySms);
-$('download-btn').addEventListener('click', downloadJson);
-$('print-btn').addEventListener('click', () => window.print());
-window.addEventListener('beforeprint', () => region.querySelectorAll('details').forEach((d) => { d.open = true; }));
+$('clear-btn').addEventListener('click', clearAll);
+
+sampleBtn.addEventListener('click', () => setMenu(menu.hidden));
+sampleBtn.addEventListener('keydown', (event) => {
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    setMenu(true, event.key === 'ArrowDown' ? 0 : -1);
+  }
+});
+menu.addEventListener('keydown', onMenuKey);
+document.addEventListener('click', (event) => {
+  if (!menu.hidden && !event.target.closest?.('.menu-wrap, #nav-samples')) setMenu(false);
+});
+
+for (const [key, tab] of Object.entries(tabs)) tab.addEventListener('click', () => showView(key));
+$('view-tabs').addEventListener('keydown', (event) => {
+  const next = { ArrowLeft: null, ArrowRight: null, Home: 'card', End: 'intake' }[event.key];
+  if (next === undefined) return;
+  event.preventDefault();
+  showView(next ?? (tabs.card.getAttribute('aria-selected') === 'true' ? 'intake' : 'card'), true);
+});
+
+$('summary-slot').addEventListener('click', (event) => {
+  const id = event.target.closest?.('button')?.id;
+  if (id && Object.hasOwn(TOOLS, id)) TOOLS[id]();
+});
+
+menuBtn.addEventListener('click', () => setDrawer(!drawerOpen()));
+$('sidebar-backdrop').addEventListener('click', () => setDrawer(false));
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  if (!menu.hidden) {
+    setMenu(false);
+    sampleBtn.focus();
+  } else if (drawerOpen()) {
+    setDrawer(false);
+    menuBtn.focus();
+  }
+});
+$('nav-samples').addEventListener('click', () => {
+  setDrawer(false);
+  showView('intake');
+  setMenu(true);
+});
+$('nav-emergency').addEventListener('click', () => {
+  setDrawer(false);
+  $('directory-slot').hidden = false;
+  $('directory-title').focus();
+});
+$('nav-verify').addEventListener('click', openDialog);
+dialog.addEventListener('click', (event) => {
+  if (event.target === dialog || event.target.closest?.('[data-close]')) closeDialog();
+});
+dialog.addEventListener('cancel', (event) => {
+  event.preventDefault();
+  closeDialog();
+});
+
+window.addEventListener('beforeprint', () => {
+  if (state.card) showView('card');
+  region.querySelectorAll('details').forEach((d) => { d.open = true; });
+});
 loadConfig();

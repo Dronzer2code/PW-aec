@@ -71,6 +71,8 @@ export function createApp(deps: AppDeps): Express {
     app.use(
       express.static(deps.publicDir ?? defaultPublicDir(), {
         index: 'index.html',
+        // `/app` serves app.html (the workspace); `/` serves the landing page.
+        extensions: ['html'],
         // Unversioned module URLs: revalidate with ETag so a deploy never mixes old and new modules.
         // Icons rarely change and are cached for a day.
         setHeaders: (res, filePath) => {

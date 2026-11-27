@@ -431,6 +431,7 @@ describe('static files', () => {
     publicDir = await mkdtemp(join(tmpdir(), 'lifebridge-public-'));
     await writeFile(join(publicDir, 'index.html'), '<!doctype html><title>LifeBridge</title><h1>LifeBridge</h1>');
     await writeFile(join(publicDir, 'app.css'), 'body{margin:0}');
+    await writeFile(join(publicDir, 'app.html'), '<!doctype html><title>Workspace</title><h1>Workspace</h1>');
   });
 
   afterAll(async () => {
@@ -451,6 +452,13 @@ describe('static files', () => {
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toBe('no-cache');
     expect(res.headers.etag).toBeDefined();
+  });
+
+  it('serves the workspace at /app (extensionless HTML)', async () => {
+    const res = await request(createTestApp({ publicDir })).get('/app');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('<h1>Workspace</h1>');
+    expect(res.headers['cache-control']).toBe('no-cache');
   });
 
   it('does not serve static files when the platform serves them (publicDir: null)', async () => {

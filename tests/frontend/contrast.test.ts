@@ -3,10 +3,10 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * WCAG 2.x contrast checks on the design tokens in styles.css, for light and dark themes.
+ * WCAG 2.x contrast checks on the design tokens in app.css, for light and dark themes.
  * jsdom cannot compute rendered colours, so the tokens themselves are verified.
  */
-const CSS = readFileSync(resolve(process.cwd(), 'public/css/styles.css'), 'utf8');
+const CSS = readFileSync(resolve(process.cwd(), 'public/css/app.css'), 'utf8');
 
 function tokens(block: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -37,19 +37,25 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+const SURFACES = ['bg', 'bg-subtle', 'bg-muted'] as const;
 const TEXT_PAIRS: [string, string][] = [
-  ['text', 'bg'], ['text', 'surface'], ['text', 'surface-2'], ['text', 'accent-soft'], ['text', 'warn-bg'],
-  ['text-muted', 'bg'], ['text-muted', 'surface'], ['text-muted', 'surface-2'], ['text-muted', 'warn-bg'],
-  ['accent', 'surface'], ['accent', 'bg'], ['on-accent', 'accent'], ['on-accent', 'accent-hover'],
+  ...(['text', 'text-secondary', 'text-tertiary'] as const).flatMap((fg): [string, string][] => SURFACES.map((bg) => [fg, bg])),
+  ['text', 'page'], ['text-tertiary', 'page'], ['placeholder', 'bg'],
+  ['brand-text', 'bg'], ['brand-text', 'brand-soft'], ['text-secondary', 'brand-soft'],
+  ['on-primary', 'primary'], ['on-primary', 'primary-hover'],
+  ['error', 'bg'], ['danger-fg', 'error-bg'], ['text', 'error-bg'],
   ['ok-fg', 'ok-bg'], ['info-fg', 'info-bg'], ['warn-fg', 'warn-bg'], ['danger-fg', 'danger-bg'], ['neutral-fg', 'neutral-bg'],
-  ['danger-fg', 'surface'], ['warn-fg', 'surface'],
+  ['danger-fg', 'bg'], ['warn-fg', 'bg'], ['ok-fg', 'bg'], ['info-fg', 'bg'], ['text-secondary', 'warn-bg'], ['text-tertiary', 'warn-bg'],
   ...(['critical', 'high', 'moderate', 'low'] as const).flatMap((s): [string, string][] => [
-    [`sev-${s}-fg`, `sev-${s}-bg`], [`sev-${s}-fg`, 'surface'], ['text', `sev-${s}-bg`],
+    [`sev-${s}-fg`, `sev-${s}-bg`], [`sev-${s}-fg`, 'bg'], [`sev-${s}-fg`, 'bg-subtle'], ['text', `sev-${s}-bg`],
   ]),
 ];
+/** Input borders, switch tracks and focus indicators (WCAG 1.4.11 non-text contrast). */
 const UI_PAIRS: [string, string][] = [
-  ['input-border', 'surface'], ['input-border', 'bg'], ['input-border', 'surface-2'],
-  ['accent', 'accent-soft'], ['focus', 'surface'], ['focus', 'bg'],
+  ['border-input', 'bg'], ['border-input', 'bg-subtle'], ['border-input', 'page'],
+  ['switch-off', 'bg'], ['brand', 'bg'], ['knob', 'switch-off'], ['knob', 'brand'],
+  ['focus', 'bg'], ['focus', 'bg-subtle'], ['focus', 'bg-muted'],
+  ['error-border', 'bg'], ['primary', 'bg'],
 ];
 
 describe.each([

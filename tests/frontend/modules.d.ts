@@ -21,6 +21,22 @@ declare module '*/public/js/render.js' {
   export function formatActor(actor: string): string;
   export function formatDomain(domain: string): string;
   export function safeHttpUrl(url: unknown): string | null;
+  export interface DirectoryContact {
+    service: string;
+    label: string;
+    number: string;
+    tel: string;
+  }
+  export const SERVICE_LABELS: Readonly<Record<string, string>>;
+  export const DIRECTORY: Readonly<Record<string, [string, string][]>>;
+  export function directoryFor(country: { code: string; emergency: string }): DirectoryContact[];
+  export function renderDirectoryCard(
+    country: { name: string },
+    contacts: { label: string; number: string; tel: string }[],
+    doc?: Document,
+  ): HTMLElement;
+  export function renderSummaryCard(card: ActionCard, doc?: Document): HTMLElement;
+  export function icon(doc: Document, name: string): SVGSVGElement;
 }
 
 declare module '*/public/js/files.js' {

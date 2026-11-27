@@ -1,13 +1,19 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
+import { DIRECTORY as SERVER_DIRECTORY, SERVICE_LABELS as SERVER_LABELS } from '../../src/domain/contacts.js';
 import {
+  DIRECTORY,
+  SERVICE_LABELS,
   buildPlainText,
+  directoryFor,
   formatActor,
   formatDomain,
   formatTimeframe,
   renderActionCard,
+  renderDirectoryCard,
   renderEmergencyFallback,
   renderSkeleton,
+  renderSummaryCard,
   safeHttpUrl,
   severityLabel,
 } from '../../public/js/render.js';
@@ -217,5 +223,82 @@ describe('fallback and skeleton', () => {
 
   it('hides the skeleton from assistive technology', () => {
     expect(renderSkeleton().getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
+describe('verified directory mirror', () => {
+  it('matches the server directory exactly (numbers, order and labels)', () => {
+    expect(Object.keys(DIRECTORY)).toEqual(Object.keys(SERVER_DIRECTORY));
+    for (const [code, info] of Object.entries(SERVER_DIRECTORY)) {
+      expect(DIRECTORY[code]).toEqual(Object.entries(info.numbers));
+    }
+    expect(SERVICE_LABELS).toEqual(SERVER_LABELS);
+  });
+
+  it('uses the full list only when the general number agrees with /api/config', () => {
+    expect(directoryFor({ code: 'IN', emergency: '112' }).map((c) => c.number)).toEqual(['112', '108', '100', '101', '1078', '1098', '181']);
+    expect(directoryFor({ code: 'IN', emergency: '999' })).toEqual([
+      { service: 'general_emergency', label: 'Emergency (all services)', number: '999', tel: 'tel:999' },
+    ]);
+    expect(directoryFor({ code: '__proto__', emergency: '911' })).toHaveLength(1);
+  });
+});
+
+describe('renderDirectoryCard', () => {
+  it('lists verified numbers as tel links and states their source', () => {
+    const el = renderDirectoryCard({ name: 'India' }, directoryFor({ code: 'IN', emergency: '112' }));
+    expect(el.querySelector('#directory-title')?.textContent).toBe('Emergency numbers');
+    expect(el.querySelector('.pc-sub')?.textContent).toBe('India · Verified directory');
+    const links = Array.from(el.querySelectorAll<HTMLAnchorElement>('a.pc-row'));
+    expect(links).toHaveLength(7);
+    expect(links[0]?.getAttribute('href')).toBe('tel:112');
+    expect(links[0]?.textContent).toBe('Call Emergency (all services)112');
+    expect(el.textContent).toContain('never from the AI');
+  });
+
+  it('drops rows whose tel value is not a plain number', () => {
+    const el = renderDirectoryCard({ name: 'X' }, [{ label: 'Bad', number: '1', tel: 'javascript:alert(1)' }]);
+    expect(el.querySelector('a')).toBeNull();
+  });
+});
+
+describe('renderSummaryCard', () => {
+  it('summarises severity, stats, contacts and tools', () => {
+    const el = renderSummaryCard(makeCard());
+    expect(el.className).toBe('profile-card sev-critical');
+    expect(el.querySelector('#summary-title')?.textContent).toBe('Road accident');
+    expect(el.querySelector('.sev-pill')?.textContent).toBe('Critical severity');
+    expect(el.querySelector('.pc-sub')?.textContent).toBe('Severity: Critical · Needs human review');
+    expect(Array.from(el.querySelectorAll('.pc-stat')).map((s) => s.textContent)).toEqual(['Facts3', 'Actions3', 'Grounding67%']);
+    expect(Array.from(el.querySelectorAll('a.pc-row')).map((a) => a.getAttribute('href'))).toEqual(['tel:112', 'tel:108']);
+    expect(Array.from(el.querySelectorAll('.pc-tags li')).map((l) => l.textContent)).toEqual(['Emergency (all services)', 'Ambulance']);
+    for (const id of ['copy-btn', 'download-btn', 'speak-btn', 'print-btn']) expect(el.querySelector(`#${id}`)?.tagName).toBe('BUTTON');
+    expect(el.querySelector('#speak-btn')?.getAttribute('aria-pressed')).toBe('false');
+    expect(el.textContent).toContain('Detected language: Hindi + English');
+    expect(el.textContent).toContain('Corroborated by live web sources');
+    expect(el.querySelector('.pc-about')?.getAttribute('lang')).toBe('en');
+  });
+
+  it('handles verified, unknown and sparse cards safely', () => {
+    const verified = renderSummaryCard(
+      makeCard({ severity: 'low', domain: 'fire', verification: { status: 'verified', groundingScore: 1, checks: [] } }),
+    );
+    expect(verified.className).toBe('profile-card sev-low');
+    expect(verified.textContent).toContain('Verified');
+    const sparse = renderSummaryCard({
+      ...makeCard(),
+      severity: 'bogus',
+      domain: 'nope',
+      detectedLanguage: '',
+      contacts: [{ service: 'police', label: XSS, number: '1', tel: 'javascript:alert(1)' }],
+      liveCheck: { status: 'skipped', note: '', sources: [] },
+      meta: undefined,
+    } as unknown as ReturnType<typeof makeCard>);
+    expect(sparse.className).toBe('profile-card sev-unknown');
+    expect(sparse.querySelector('#summary-title')?.textContent).toBe('General situation');
+    expect(sparse.querySelector('a[href^="javascript"]')).toBeNull();
+    expect(sparse.querySelector('img')).toBeNull();
+    expect(sparse.textContent).not.toContain('Live web check');
+    expect(sparse.textContent).not.toContain('Detected language');
   });
 });
