@@ -103,19 +103,30 @@ export function isFailoverError(err: unknown): boolean {
 export async function withModelFailover<T>(
   models: readonly string[],
   signal: AbortSignal,
-  fn: (model: string) => Promise<T>,
+  fn: (model: string, attemptSignal: AbortSignal) => Promise<T>,
+  attemptTimeoutMs?: number,
 ): Promise<T> {
   let lastError: unknown = new Error('No Gemini model configured');
-  for (const model of models) {
+  for (const [i, model] of models.entries()) {
+    // Every model but the last gets its own deadline, so one stuck in a slow queue
+    // hands over to the next instead of consuming the whole request budget.
+    const isLast = i === models.length - 1;
+    const attemptSignal =
+      attemptTimeoutMs === undefined || isLast ? signal : AbortSignal.any([signal, AbortSignal.timeout(attemptTimeoutMs)]);
     try {
-      return await fn(model);
+      return await fn(model, attemptSignal);
     } catch (err) {
       lastError = err;
-      if (signal.aborted || !isFailoverError(err)) throw err;
+      if (signal.aborted) throw err;
+      const stalled = attemptSignal !== signal && attemptSignal.aborted;
+      if (!stalled && !isFailoverError(err)) throw err;
     }
   }
   throw lastError;
 }
+
+/** Per-model deadline before failing over to the next model (lite models normally answer in ~3 s). */
+export const ATTEMPT_TIMEOUT_MS = 12_000;
 
 /**
  * Production implementation backed by the Google Gen AI SDK (Gemini API).
@@ -159,23 +170,31 @@ export function createGeminiAnalyzer(options: {
   return {
     model,
     async structure(parts, signal) {
-      const response = await withModelFailover(models, signal, (candidate) =>
-        ai.models.generateContent({
-          model: candidate,
-          contents: [{ role: 'user', parts }],
-          config: structureConfig(candidate, signal),
-        }),
+      const response = await withModelFailover(
+        models,
+        signal,
+        (candidate, attemptSignal) =>
+          ai.models.generateContent({
+            model: candidate,
+            contents: [{ role: 'user', parts }],
+            config: structureConfig(candidate, attemptSignal),
+          }),
+        ATTEMPT_TIMEOUT_MS,
       );
       return parseModelJson(response.text);
     },
 
     async liveCheck(claims, place, signal) {
-      const response = await withModelFailover(liveModels, signal, (candidate) =>
-        ai.models.generateContent({
-          model: candidate,
-          contents: buildLiveCheckPrompt(claims, place),
-          config: liveCheckConfig(candidate, signal),
-        }),
+      const response = await withModelFailover(
+        liveModels,
+        signal,
+        (candidate, attemptSignal) =>
+          ai.models.generateContent({
+            model: candidate,
+            contents: buildLiveCheckPrompt(claims, place),
+            config: liveCheckConfig(candidate, attemptSignal),
+          }),
+        ATTEMPT_TIMEOUT_MS,
       );
       return parseLiveCheck(response.text, response.candidates?.[0]?.groundingMetadata?.groundingChunks);
     },

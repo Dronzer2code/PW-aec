@@ -10,6 +10,7 @@ import {
   safeHttpUrl,
   thinkingConfigFor,
   withModelFailover,
+  ATTEMPT_TIMEOUT_MS,
 } from '../../src/services/gemini.js';
 import { SYSTEM_INSTRUCTION } from '../../src/services/prompt.js';
 import { validModelOutput } from '../helpers/fixtures.js';
@@ -306,5 +307,39 @@ describe('thinkingConfigFor', () => {
   it('leaves newer lite models on their default', () => {
     expect(thinkingConfigFor('gemini-3.5-flash-lite')).toEqual({});
     expect(thinkingConfigFor('gemini-test')).toEqual({});
+  });
+});
+
+describe('per-model deadline', () => {
+  it('fails over when a model stalls past its deadline', async () => {
+    const tried: string[] = [];
+    const result = await withModelFailover(
+      ['slow', 'fast'],
+      new AbortController().signal,
+      (m, attemptSignal) => {
+        tried.push(m);
+        if (m === 'fast') return Promise.resolve('ok:fast');
+        return new Promise<string>((_resolve, reject) => {
+          attemptSignal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+        });
+      },
+      20,
+    );
+    expect(result).toBe('ok:fast');
+    expect(tried).toEqual(['slow', 'fast']);
+  });
+
+  it('gives the last model the full remaining budget (no extra deadline)', async () => {
+    const outer = new AbortController().signal;
+    let seen: AbortSignal | undefined;
+    await withModelFailover(['only'], outer, async (_m, attemptSignal) => {
+      seen = attemptSignal;
+      return 'x';
+    }, 20);
+    expect(seen).toBe(outer);
+  });
+
+  it('exposes a sensible default deadline', () => {
+    expect(ATTEMPT_TIMEOUT_MS).toBeGreaterThan(5_000);
   });
 });
