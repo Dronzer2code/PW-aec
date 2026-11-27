@@ -24,7 +24,17 @@ export class ModelOutputError extends Error {
 }
 
 export const MAX_OUTPUT_TOKENS = 8192;
-export const THINKING_BUDGET = 1024;
+/**
+ * Models that accept `thinkingBudget: 0`. Turning thinking off keeps a lite
+ * model at ~3 s instead of ~40 s of dynamic thinking. Newer lite models reject
+ * a zero budget and are already fast with their default, so they get no config.
+ */
+const ZERO_THINKING_MODELS = /^gemini-(2\.5|3\.1)-/;
+
+/** Thinking settings for a model: off where supported, otherwise the model default. */
+export function thinkingConfigFor(model: string): { thinkingConfig?: { thinkingBudget: number } } {
+  return ZERO_THINKING_MODELS.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {};
+}
 
 const STATUS_RE = /STATUS:\s*(CORROBORATED|CONTRADICTED|INCONCLUSIVE)/i;
 const MAX_SOURCES = 5;
@@ -127,21 +137,22 @@ export function createGeminiAnalyzer(options: {
       ? models
       : [options.liveCheckModel, ...models.filter((m) => m !== options.liveCheckModel)];
 
-  const structureConfig = (signal: AbortSignal) => ({
+  const structureConfig = (model: string, signal: AbortSignal) => ({
     systemInstruction: SYSTEM_INSTRUCTION,
     responseMimeType: 'application/json',
     responseJsonSchema: modelOutputJsonSchema,
     temperature: 0.2,
-    // Bounded cost and latency: modest thinking, capped output (sourceText can be long).
+    // Bounded cost and latency: no thinking where supported, capped output (sourceText can be long).
     maxOutputTokens: MAX_OUTPUT_TOKENS,
-    thinkingConfig: { thinkingBudget: THINKING_BUDGET },
+    ...thinkingConfigFor(model),
     abortSignal: signal,
   });
 
-  const liveCheckConfig = (signal: AbortSignal) => ({
+  const liveCheckConfig = (model: string, signal: AbortSignal) => ({
     tools: [{ googleSearch: {} }],
     temperature: 0,
     maxOutputTokens: 1024,
+    ...thinkingConfigFor(model),
     abortSignal: signal,
   });
 
@@ -152,7 +163,7 @@ export function createGeminiAnalyzer(options: {
         ai.models.generateContent({
           model: candidate,
           contents: [{ role: 'user', parts }],
-          config: structureConfig(signal),
+          config: structureConfig(candidate, signal),
         }),
       );
       return parseModelJson(response.text);
@@ -163,7 +174,7 @@ export function createGeminiAnalyzer(options: {
         ai.models.generateContent({
           model: candidate,
           contents: buildLiveCheckPrompt(claims, place),
-          config: liveCheckConfig(signal),
+          config: liveCheckConfig(candidate, signal),
         }),
       );
       return parseLiveCheck(response.text, response.candidates?.[0]?.groundingMetadata?.groundingChunks);

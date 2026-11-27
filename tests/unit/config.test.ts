@@ -6,8 +6,8 @@ describe('loadConfig', () => {
     const config = loadConfig({});
     expect(config).toEqual({
       geminiApiKey: undefined,
-      geminiModel: 'gemini-3.6-flash',
-      geminiFallbackModels: ['gemini-3.5-flash', 'gemini-2.5-flash'],
+      geminiModel: 'gemini-3.1-flash-lite',
+      geminiFallbackModels: ['gemini-3.5-flash-lite', 'gemini-2.5-flash'],
       geminiLiveCheckModel: 'gemini-2.5-flash',
       port: 8080,
       nodeEnv: 'production',

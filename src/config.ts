@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
-/** Pinned, tested model versions (an alias such as `gemini-flash-latest` can change behaviour or vanish). */
-export const DEFAULT_MODEL = 'gemini-3.6-flash';
+/** Pinned, tested, fast lite model versions (~3 s per Action Card) (an alias such as `gemini-flash-latest` can change behaviour or vanish). */
+export const DEFAULT_MODEL = 'gemini-3.1-flash-lite';
 /** Tried in order when the primary model is overloaded (HTTP 429/5xx). */
-export const DEFAULT_FALLBACK_MODELS: readonly string[] = ['gemini-3.5-flash', 'gemini-2.5-flash'];
+export const DEFAULT_FALLBACK_MODELS: readonly string[] = ['gemini-3.5-flash-lite', 'gemini-2.5-flash'];
 
 /** Google Search grounding is available on the free tier for this model. */
 export const DEFAULT_LIVE_CHECK_MODEL = 'gemini-2.5-flash';

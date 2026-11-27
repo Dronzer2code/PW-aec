@@ -8,7 +8,7 @@ import {
   parseLiveCheck,
   parseModelJson,
   safeHttpUrl,
-  THINKING_BUDGET,
+  thinkingConfigFor,
   withModelFailover,
 } from '../../src/services/gemini.js';
 import { SYSTEM_INSTRUCTION } from '../../src/services/prompt.js';
@@ -165,7 +165,6 @@ describe('createGeminiAnalyzer', () => {
         responseJsonSchema: modelOutputJsonSchema,
         temperature: 0.2,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
-        thinkingConfig: { thinkingBudget: THINKING_BUDGET },
         abortSignal: signal,
       },
     });
@@ -295,5 +294,17 @@ describe('createGeminiAnalyzer model routing', () => {
     const result = await analyzer.liveCheck(['claim'], 'India', new AbortController().signal);
     expect(result.status).toBe('corroborated');
     expect(sdk.generateContent.mock.calls.map((c) => c[0].model).slice(-2)).toEqual(['grounded', 'primary']);
+  });
+});
+
+describe('thinkingConfigFor', () => {
+  it('turns thinking off for models that accept a zero budget', () => {
+    expect(thinkingConfigFor('gemini-3.1-flash-lite')).toEqual({ thinkingConfig: { thinkingBudget: 0 } });
+    expect(thinkingConfigFor('gemini-2.5-flash')).toEqual({ thinkingConfig: { thinkingBudget: 0 } });
+  });
+
+  it('leaves newer lite models on their default', () => {
+    expect(thinkingConfigFor('gemini-3.5-flash-lite')).toEqual({});
+    expect(thinkingConfigFor('gemini-test')).toEqual({});
   });
 });
