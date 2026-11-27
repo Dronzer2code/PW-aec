@@ -26,6 +26,8 @@ export interface VerificationInput {
   /** Whether the Intake contained audio/image/PDF files (enables `transcribed` status). */
   hasFiles: boolean;
   country: CountryCode;
+  /** Output language of the card; used for any action the engine adds. Default `en`. */
+  language?: string;
 }
 
 export interface VerificationResult {
@@ -103,7 +105,9 @@ const CALL_VERB_RE = /\b(call|dial|phone|ring|contact|alert)\b/i;
 const EMERGENCY_SERVICE_RE =
   /\b(emergency|ambulance|police|fire\s*(brigade|service|department)|rescue|responders?|helpline|paramedics?)\b/i;
 /** Calling verbs in common Indian output languages (Hindi/Marathi "कॉल/फोन", Bengali "কল/ফোন", Hinglish). */
-const LOCAL_CALL_RE = /(कॉल|फ़ोन|फोन|কল|ফোন|call\s+karo|phone\s+karo)/iu;
+const LOCAL_CALL_RE = /(कॉल|फ़ोन|फोन|बुलाएँ|बुलाएं|बुलाओ|बुलाइए|बोलवा|কল|ফোন|ডাকুন|call\s+karo|phone\s+karo|bulao)/iu;
+/** Emergency service words in Hindi/Marathi and Bengali. */
+const LOCAL_SERVICE_RE = /(एम्बुलेंस|एंबुलेंस|पुलिस|आपातकालीन|दमकल|अग्निशमन|रुग्णवाहिका|অ্যাম্বুলেন্স|পুলিশ|জরুরি|দমকল|ambulance\s+ko)/iu;
 const NEGATED_RE =/\b(do\s+not|don't|never|avoid)\s+(touch\s+or\s+)?(call|dial|phone|ring|contact|alert)\b/i;
 
 /**
@@ -117,7 +121,29 @@ export function mentionsEmergencyCall(action: ModelAction, country: CountryCode)
   if (!callVerb || NEGATED_RE.test(text)) return false;
   // A bare "100" in "move 100 metres away" is not a call; the number must accompany a calling verb.
   const numberHit = Array.from(allowedNumbers(country)).some((n) => new RegExp(`(^|\\D)${n}(\\D|$)`).test(text));
-  return numberHit || EMERGENCY_SERVICE_RE.test(text);
+  return numberHit || EMERGENCY_SERVICE_RE.test(text) || LOCAL_SERVICE_RE.test(text);
+}
+
+/** Localized wording of the "call now" action added by the critical escalation check. */
+type EscalationWording = (number: string, label: string) => { instruction: string; rationale: string };
+
+const ENGLISH_ESCALATION: EscalationWording = (n, l) => ({
+  instruction: `Call ${n} (${l}) now.`,
+  rationale: 'This situation is urgent; trained responders must be alerted first.',
+});
+
+const ESCALATION_TEXT: Readonly<Record<string, EscalationWording>> = {
+  en: ENGLISH_ESCALATION,
+  hi: (n, l) => ({ instruction: `अभी ${n} (${l}) पर कॉल करें।`, rationale: 'स्थिति गंभीर है; सबसे पहले प्रशिक्षित मदद को सूचित करें।' }),
+  mr: (n, l) => ({ instruction: `आत्ताच ${n} (${l}) वर कॉल करा.`, rationale: 'परिस्थिती गंभीर आहे; आधी प्रशिक्षित मदतीला कळवा.' }),
+  bn: (n, l) => ({ instruction: `এখনই ${n} (${l}) নম্বরে কল করুন।`, rationale: 'পরিস্থিতি গুরুতর; সবার আগে প্রশিক্ষিত সাহায্যকারীদের জানান।' }),
+  es: (n, l) => ({ instruction: `Llame al ${n} (${l}) ahora.`, rationale: 'La situación es urgente; avise primero a los servicios de emergencia.' }),
+  fr: (n, l) => ({ instruction: `Appelez le ${n} (${l}) maintenant.`, rationale: 'La situation est urgente ; prévenez d’abord les secours.' }),
+};
+
+/** Escalation wording for a language, falling back to English. */
+export function escalationText(language: string, number: string, label: string): { instruction: string; rationale: string } {
+  return (ESCALATION_TEXT[language] ?? ENGLISH_ESCALATION)(number, label);
 }
 
 /* ----------------------------- engine ------------------------------ */
@@ -133,6 +159,7 @@ function guardText(text: string, country: CountryCode): { text: string; redacted
  */
 export function runVerification(input: VerificationInput): VerificationResult {
   const { output, userText, hasFiles, country } = input;
+  const language = input.language ?? 'en';
   const checks: VerificationCheck[] = [
     { id: 'schema', status: 'pass', message: 'Model output matched the required structure.' },
   ];
@@ -234,10 +261,10 @@ export function runVerification(input: VerificationInput): VerificationResult {
     const service: Service = services.has('ambulance') ? 'ambulance' : 'general_emergency';
     const number = numberFor(country, service);
     actions.unshift({
-      instruction: `Call ${number} (${SERVICE_LABELS[service]}) now.`,
+      instruction: escalationText(language, number, SERVICE_LABELS[service]).instruction,
       actor: 'caller',
       timeframe: 'immediately',
-      rationale: 'This situation is urgent; trained responders must be alerted first.',
+      rationale: escalationText(language, number, SERVICE_LABELS[service]).rationale,
       flags: ['escalation_added'],
     });
     checks.push({

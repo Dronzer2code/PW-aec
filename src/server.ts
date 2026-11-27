@@ -9,7 +9,11 @@ const logger = createLogger({ minSeverity: config.nodeEnv === 'development' ? 'D
 const analyzer =
   config.geminiApiKey === undefined
     ? undefined
-    : createGeminiAnalyzer({ apiKey: config.geminiApiKey, model: config.geminiModel });
+    : createGeminiAnalyzer({
+        apiKey: config.geminiApiKey,
+        model: config.geminiModel,
+        fallbackModels: config.geminiFallbackModels,
+      });
 
 if (analyzer === undefined) {
   logger.warn('GEMINI_API_KEY is not set; /api/analyze will return AI_UNAVAILABLE');

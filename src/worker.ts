@@ -23,7 +23,11 @@ function start(): number {
   const analyzer =
     config.geminiApiKey === undefined
       ? undefined
-      : createGeminiAnalyzer({ apiKey: config.geminiApiKey, model: config.geminiModel });
+      : createGeminiAnalyzer({
+        apiKey: config.geminiApiKey,
+        model: config.geminiModel,
+        fallbackModels: config.geminiFallbackModels,
+      });
 
   createApp({
     analyzer,

@@ -92,4 +92,4 @@ Core concept terms (use these exact names everywhere):
 ## UNRESOLVED
 
 - Exact weighting the AI evaluator gives each criterion: UNKNOWN.
-- Gemini model ID available on the deployer's API key: configured via `GEMINI_MODEL` env var; default `gemini-flash-latest`.
+- Gemini model ID available on the deployer's API key: configured via `GEMINI_MODEL` (default `gemini-3.6-flash`) with `GEMINI_FALLBACK_MODELS` failover.

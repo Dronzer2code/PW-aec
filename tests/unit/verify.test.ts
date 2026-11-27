@@ -3,6 +3,7 @@ import type { CountryCode } from '../../src/domain/contacts.js';
 import type { ModelOutput } from '../../src/domain/schema.js';
 import {
   detectPromptInjection,
+  escalationText,
   DOSAGE_REPLACEMENT,
   mentionsEmergencyCall,
   redactUnknownNumbers,
@@ -405,5 +406,30 @@ describe('guards on every model-written field', () => {
     );
     expect(r.facts[0]?.value).toBe('9876543210');
     expect(r.facts[1]?.value).toContain(REDACTED_NUMBER);
+  });
+});
+
+describe('localized escalation', () => {
+  it('recognizes Hindi and Bengali emergency calls', () => {
+    expect(mentionsEmergencyCall(action('तत्काल एम्बुलेंस और पुलिस को बुलाएँ।'), 'IN')).toBe(true);
+    expect(mentionsEmergencyCall(action('এখনই অ্যাম্বুলেন্স ডাকুন'), 'IN')).toBe(true);
+    expect(mentionsEmergencyCall(action('परिवार को बुलाएँ'), 'IN')).toBe(false);
+  });
+
+  it('adds the escalation action in the output language', () => {
+    const r = runVerification({
+      output: validModelOutput({ severity: 'critical', actions: [action('मरीज़ को लिटा दें')] }),
+      userText: SAMPLE_TEXT,
+      hasFiles: false,
+      country: 'IN',
+      language: 'hi',
+    });
+    expect(r.actions[0]?.instruction).toBe('अभी 108 (Ambulance) पर कॉल करें।');
+    expect(r.actions[0]?.flags).toContain('escalation_added');
+  });
+
+  it('falls back to English wording for other languages', () => {
+    expect(escalationText('ta', '112', 'Emergency').instruction).toBe('Call 112 (Emergency) now.');
+    expect(escalationText('es', '112', 'Emergency').instruction).toBe('Llame al 112 (Emergency) ahora.');
   });
 });

@@ -145,6 +145,7 @@ export async function analyzeIntake(
     userText: request.text ?? '',
     hasFiles: request.files.length > 0,
     country: request.country,
+    language: request.language,
   });
 
   const liveCheck: LiveCheckResult = request.liveCheck

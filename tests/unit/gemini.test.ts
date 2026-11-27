@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { modelOutputJsonSchema } from '../../src/domain/schema.js';
 import {
   createGeminiAnalyzer,
+  isFailoverError,
   MAX_OUTPUT_TOKENS,
   ModelOutputError,
   parseLiveCheck,
   parseModelJson,
   safeHttpUrl,
   THINKING_BUDGET,
+  withModelFailover,
 } from '../../src/services/gemini.js';
 import { SYSTEM_INSTRUCTION } from '../../src/services/prompt.js';
 import { validModelOutput } from '../helpers/fixtures.js';
@@ -142,7 +144,7 @@ describe('createGeminiAnalyzer', () => {
   it('creates the SDK client with the API key and exposes the model name', () => {
     const analyzer = createGeminiAnalyzer({ apiKey: 'k-123', model: 'gemini-test' });
     expect(analyzer.model).toBe('gemini-test');
-    expect(sdk.constructorArgs).toEqual([{ apiKey: 'k-123' }]);
+    expect(sdk.constructorArgs).toEqual([{ apiKey: 'k-123', apiVersion: 'v1beta' }]);
   });
 
   it('structure() sends a schema-constrained JSON request and parses the reply', async () => {
@@ -219,5 +221,61 @@ describe('createGeminiAnalyzer', () => {
     const analyzer = createGeminiAnalyzer({ apiKey: 'k', model: 'm' });
     const result = await analyzer.liveCheck(['x'], 'India', new AbortController().signal);
     expect(result).toEqual({ status: 'inconclusive', note: 'No explanation returned.', sources: [] });
+  });
+});
+
+describe('model failover', () => {
+  const busy = (status: number) => Object.assign(new Error('busy'), { status });
+
+  it('classifies overload statuses as failover errors', () => {
+    expect(isFailoverError(busy(503))).toBe(true);
+    expect(isFailoverError(busy(429))).toBe(true);
+    expect(isFailoverError(busy(400))).toBe(false);
+    expect(isFailoverError(new Error('plain'))).toBe(false);
+    expect(isFailoverError(null)).toBe(false);
+  });
+
+  it('moves to the next model only when the current one is overloaded', async () => {
+    const tried: string[] = [];
+    const result = await withModelFailover(['a', 'b', 'c'], new AbortController().signal, async (m) => {
+      tried.push(m);
+      if (m === 'a') throw busy(503);
+      return `ok:${m}`;
+    });
+    expect(result).toBe('ok:b');
+    expect(tried).toEqual(['a', 'b']);
+  });
+
+  it('does not fail over on a request error', async () => {
+    const tried: string[] = [];
+    await expect(
+      withModelFailover(['a', 'b'], new AbortController().signal, async (m) => {
+        tried.push(m);
+        throw busy(400);
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(tried).toEqual(['a']);
+  });
+
+  it('stops when the request was aborted', async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const tried: string[] = [];
+    await expect(
+      withModelFailover(['a', 'b'], ac.signal, async (m) => {
+        tried.push(m);
+        throw busy(503);
+      }),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(tried).toEqual(['a']);
+  });
+
+  it('rethrows the last error when every model is overloaded, or fails with no models', async () => {
+    await expect(
+      withModelFailover(['a', 'b'], new AbortController().signal, async () => {
+        throw busy(503);
+      }),
+    ).rejects.toMatchObject({ status: 503 });
+    await expect(withModelFailover([], new AbortController().signal, async () => 'x')).rejects.toThrow(/No Gemini model/);
   });
 });

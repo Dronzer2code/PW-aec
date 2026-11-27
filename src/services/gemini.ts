@@ -77,43 +77,90 @@ export function parseModelJson(text: string | undefined): unknown {
   }
 }
 
-/** Production implementation backed by the Google Gen AI SDK (Gemini API). */
-export function createGeminiAnalyzer(options: { apiKey: string; model: string }): GeminiAnalyzer {
-  const ai = new GoogleGenAI({ apiKey: options.apiKey });
+/** Gemini answers with these statuses when a model is overloaded or rate limited; another model may still work. */
+const FAILOVER_STATUSES: ReadonlySet<number> = new Set([429, 500, 503]);
+
+/** True when an SDK error means "try the next model" rather than "the request itself is wrong". */
+export function isFailoverError(err: unknown): boolean {
+  const status = typeof err === 'object' && err !== null ? (err as { status?: unknown }).status : undefined;
+  return typeof status === 'number' && FAILOVER_STATUSES.has(status);
+}
+
+/**
+ * Calls `fn` with each model in order, moving to the next one only when the
+ * current model is overloaded (429/5xx) and the request has not been aborted.
+ */
+export async function withModelFailover<T>(
+  models: readonly string[],
+  signal: AbortSignal,
+  fn: (model: string) => Promise<T>,
+): Promise<T> {
+  let lastError: unknown = new Error('No Gemini model configured');
+  for (const model of models) {
+    try {
+      return await fn(model);
+    } catch (err) {
+      lastError = err;
+      if (signal.aborted || !isFailoverError(err)) throw err;
+    }
+  }
+  throw lastError;
+}
+
+/**
+ * Production implementation backed by the Google Gen AI SDK (Gemini API).
+ * `fallbackModels` are tried in order when the primary model is overloaded.
+ */
+export function createGeminiAnalyzer(options: {
+  apiKey: string;
+  model: string;
+  fallbackModels?: readonly string[];
+}): GeminiAnalyzer {
+  // v1beta exposes systemInstruction, JSON-schema output and Google Search grounding for every key type.
+  const ai = new GoogleGenAI({ apiKey: options.apiKey, apiVersion: 'v1beta' });
   const model = options.model;
+  const models = [model, ...(options.fallbackModels ?? []).filter((m) => m !== model)];
+
+  const structureConfig = (signal: AbortSignal) => ({
+    systemInstruction: SYSTEM_INSTRUCTION,
+    responseMimeType: 'application/json',
+    responseJsonSchema: modelOutputJsonSchema,
+    temperature: 0.2,
+    // Bounded cost and latency: modest thinking, capped output (sourceText can be long).
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    thinkingConfig: { thinkingBudget: THINKING_BUDGET },
+    abortSignal: signal,
+  });
+
+  const liveCheckConfig = (signal: AbortSignal) => ({
+    tools: [{ googleSearch: {} }],
+    temperature: 0,
+    maxOutputTokens: 1024,
+    thinkingConfig: { thinkingBudget: THINKING_BUDGET },
+    abortSignal: signal,
+  });
 
   return {
     model,
     async structure(parts, signal) {
-      const response = await ai.models.generateContent({
-        model,
-        contents: [{ role: 'user', parts }],
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: 'application/json',
-          responseJsonSchema: modelOutputJsonSchema,
-          temperature: 0.2,
-          // Bounded cost and latency: modest thinking, capped output (sourceText can be long).
-          maxOutputTokens: MAX_OUTPUT_TOKENS,
-          thinkingConfig: { thinkingBudget: THINKING_BUDGET },
-          abortSignal: signal,
-        },
-      });
+      const response = await withModelFailover(models, signal, (candidate) =>
+        ai.models.generateContent({
+          model: candidate,
+          contents: [{ role: 'user', parts }],
+          config: structureConfig(signal),
+        }),
+      );
       return parseModelJson(response.text);
     },
 
     async liveCheck(claims, place, signal) {
-      const response = await ai.models.generateContent({
-        model,
-        contents: buildLiveCheckPrompt(claims, place),
-        config: {
-          tools: [{ googleSearch: {} }],
-          temperature: 0,
-          maxOutputTokens: 1024,
-          thinkingConfig: { thinkingBudget: THINKING_BUDGET },
-          abortSignal: signal,
-        },
-      });
+      const response = await withModelFailover(models, signal, (candidate) =>
+        ai.models.generateContent({
+          model: candidate,
+          contents: buildLiveCheckPrompt(claims, place),
+          config: liveCheckConfig(signal),
+        }),
+      );
       return parseLiveCheck(response.text, response.candidates?.[0]?.groundingMetadata?.groundingChunks);
     },
   };
