@@ -211,7 +211,6 @@ describe('createGeminiAnalyzer', () => {
       tools: [{ googleSearch: {} }],
       temperature: 0,
       maxOutputTokens: 1024,
-      thinkingConfig: { thinkingBudget: THINKING_BUDGET },
       abortSignal: signal,
     });
   });
@@ -277,5 +276,24 @@ describe('model failover', () => {
       }),
     ).rejects.toMatchObject({ status: 503 });
     await expect(withModelFailover([], new AbortController().signal, async () => 'x')).rejects.toThrow(/No Gemini model/);
+  });
+});
+
+describe('createGeminiAnalyzer model routing', () => {
+  it('uses the live-check model first for grounded calls and the primary model for structuring', async () => {
+    sdk.generateContent.mockResolvedValue({ text: 'STATUS: INCONCLUSIVE\nNothing found.', candidates: [] });
+    const analyzer = createGeminiAnalyzer({ apiKey: 'k', model: 'primary', fallbackModels: ['backup'], liveCheckModel: 'grounded' });
+    await analyzer.liveCheck(['claim'], 'India', new AbortController().signal);
+    expect(sdk.generateContent.mock.calls.at(-1)?.[0].model).toBe('grounded');
+  });
+
+  it('falls back to the next model when the live-check model is over quota', async () => {
+    sdk.generateContent
+      .mockRejectedValueOnce(Object.assign(new Error('quota'), { status: 429 }))
+      .mockResolvedValueOnce({ text: 'STATUS: CORROBORATED\nYes.', candidates: [] });
+    const analyzer = createGeminiAnalyzer({ apiKey: 'k', model: 'primary', liveCheckModel: 'grounded' });
+    const result = await analyzer.liveCheck(['claim'], 'India', new AbortController().signal);
+    expect(result.status).toBe('corroborated');
+    expect(sdk.generateContent.mock.calls.map((c) => c[0].model).slice(-2)).toEqual(['grounded', 'primary']);
   });
 });

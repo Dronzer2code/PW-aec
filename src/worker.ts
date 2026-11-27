@@ -27,6 +27,7 @@ function start(): number {
         apiKey: config.geminiApiKey,
         model: config.geminiModel,
         fallbackModels: config.geminiFallbackModels,
+        liveCheckModel: config.geminiLiveCheckModel,
       });
 
   createApp({

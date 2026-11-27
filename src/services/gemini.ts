@@ -115,11 +115,17 @@ export function createGeminiAnalyzer(options: {
   apiKey: string;
   model: string;
   fallbackModels?: readonly string[];
+  /** Model tried first for Google Search grounding (free-tier grounding quota differs per model). */
+  liveCheckModel?: string;
 }): GeminiAnalyzer {
   // v1beta exposes systemInstruction, JSON-schema output and Google Search grounding for every key type.
   const ai = new GoogleGenAI({ apiKey: options.apiKey, apiVersion: 'v1beta' });
   const model = options.model;
   const models = [model, ...(options.fallbackModels ?? []).filter((m) => m !== model)];
+  const liveModels =
+    options.liveCheckModel === undefined
+      ? models
+      : [options.liveCheckModel, ...models.filter((m) => m !== options.liveCheckModel)];
 
   const structureConfig = (signal: AbortSignal) => ({
     systemInstruction: SYSTEM_INSTRUCTION,
@@ -136,7 +142,6 @@ export function createGeminiAnalyzer(options: {
     tools: [{ googleSearch: {} }],
     temperature: 0,
     maxOutputTokens: 1024,
-    thinkingConfig: { thinkingBudget: THINKING_BUDGET },
     abortSignal: signal,
   });
 
@@ -154,7 +159,7 @@ export function createGeminiAnalyzer(options: {
     },
 
     async liveCheck(claims, place, signal) {
-      const response = await withModelFailover(models, signal, (candidate) =>
+      const response = await withModelFailover(liveModels, signal, (candidate) =>
         ai.models.generateContent({
           model: candidate,
           contents: buildLiveCheckPrompt(claims, place),

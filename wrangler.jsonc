@@ -19,6 +19,7 @@
     "NODE_ENV": "production",
     "GEMINI_MODEL": "gemini-3.6-flash",
     "GEMINI_FALLBACK_MODELS": "gemini-3.5-flash,gemini-2.5-flash",
+    "GEMINI_LIVE_CHECK_MODEL": "gemini-2.5-flash",
     "RATE_LIMIT_PER_MINUTE": "20",
     "GEMINI_TIMEOUT_MS": "30000"
   },

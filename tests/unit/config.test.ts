@@ -8,6 +8,7 @@ describe('loadConfig', () => {
       geminiApiKey: undefined,
       geminiModel: 'gemini-3.6-flash',
       geminiFallbackModels: ['gemini-3.5-flash', 'gemini-2.5-flash'],
+      geminiLiveCheckModel: 'gemini-2.5-flash',
       port: 8080,
       nodeEnv: 'production',
       rateLimitPerMinute: 20,

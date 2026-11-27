@@ -82,6 +82,7 @@ An agent implementing or modifying LifeBridge MUST follow the stack, file layout
 |---|---|---|---|
 | `GEMINI_API_KEY` | yes in production | — | Gemini API key. If missing, `/api/analyze` returns 503 `AI_UNAVAILABLE`; app still serves UI. |
 | `GEMINI_MODEL` | no | `gemini-3.6-flash` | Primary Gemini model ID (pinned version, tested end to end). |
+| `GEMINI_LIVE_CHECK_MODEL` | no | `gemini-2.5-flash` | Model tried first for Google Search grounding (free-tier grounding quota differs per model); falls back to the other models. |
 | `GEMINI_FALLBACK_MODELS` | no | `gemini-3.5-flash,gemini-2.5-flash` | Comma-separated models tried in order when the primary answers 429/500/503. |
 | `PORT` | no | `8080` | Cloud Run injects this. |
 | `NODE_ENV` | no | `production` | |
