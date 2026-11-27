@@ -33,32 +33,43 @@ export function describeMicError(err) {
  */
 export async function startRecording({ maxMs = MAX_RECORDING_MS, onTick } = {}) {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const releaseMic = () => stream.getTracks().forEach((track) => track.stop());
   const mimeType = pickMimeType();
-  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
   const chunks = [];
-  const startedAt = Date.now();
-  const ticker = setInterval(() => onTick?.(Date.now() - startedAt), 500);
+  let recorder;
+  let ticker = 0;
+  let limit = 0;
+  /** @type {Promise<Blob>} */
+  let done;
   const stop = () => {
     if (recorder.state !== 'inactive') recorder.stop();
     return done;
   };
-  const limit = setTimeout(stop, maxMs);
-  const done = new Promise((resolve, reject) => {
-    const finish = () => {
-      clearInterval(ticker);
-      clearTimeout(limit);
-      stream.getTracks().forEach((track) => track.stop());
-    };
-    recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
-    recorder.onstop = () => {
-      finish();
-      resolve(new Blob(chunks, { type: (recorder.mimeType || mimeType || 'audio/webm').split(';')[0] }));
-    };
-    recorder.onerror = (event) => {
-      finish();
-      reject(event.error ?? new Error('Recording failed'));
-    };
-  });
-  recorder.start(1000);
+  try {
+    recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    done = new Promise((resolve, reject) => {
+      const finish = () => {
+        clearInterval(ticker);
+        clearTimeout(limit);
+        releaseMic();
+      };
+      recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
+      recorder.onstop = () => {
+        finish();
+        resolve(new Blob(chunks, { type: (recorder.mimeType || mimeType || 'audio/webm').split(';')[0] }));
+      };
+      recorder.onerror = (event) => {
+        finish();
+        reject(event.error ?? new Error('Recording failed'));
+      };
+    });
+    recorder.start(1000);
+  } catch (err) {
+    releaseMic(); // never leave the microphone on when recording could not start
+    throw err;
+  }
+  const startedAt = Date.now();
+  ticker = setInterval(() => onTick?.(Date.now() - startedAt), 500);
+  limit = setTimeout(stop, maxMs);
   return { stop, done };
 }

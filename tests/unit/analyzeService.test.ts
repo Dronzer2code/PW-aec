@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AnalyzeRequestSchema, type ActionCard } from '../../src/domain/schema.js';
 import { AppError } from '../../src/errors.js';
 import { silentLogger } from '../../src/logger.js';
-import { analyzeIntake, assertFilesMatchTypes, MAX_ATTEMPTS, type AnalyzeDeps } from '../../src/services/analyze.js';
+import { analyzeIntake, describePlace, assertFilesMatchTypes, MAX_ATTEMPTS, type AnalyzeDeps } from '../../src/services/analyze.js';
 import { LruCache } from '../../src/services/cache.js';
 import { fakeAnalyzer, MISMATCHED_B64, PNG_B64, SAMPLE_TEXT, validModelOutput, type FakeAnalyzer } from '../helpers/fixtures.js';
 
@@ -91,12 +91,51 @@ describe('analyzeIntake', () => {
     });
   });
 
-  it('maps a non-Error rejection to AI_UNAVAILABLE', async () => {
+  it('maps a non-Error rejection to the retryable AI_UPSTREAM_ERROR', async () => {
     const analyzer = fakeAnalyzer();
     analyzer.structure = () => Promise.reject(new Map());
     await expect(analyzeIntake(request({ text: SAMPLE_TEXT }), 'r', deps(analyzer))).rejects.toMatchObject({
+      code: 'AI_UPSTREAM_ERROR',
+    });
+  });
+
+  it.each([400, 401, 403, 404])('maps Gemini HTTP %i (misconfiguration) to AI_UNAVAILABLE', async (status) => {
+    const analyzer = fakeAnalyzer();
+    analyzer.structure = () => Promise.reject(Object.assign(new Error('bad'), { status }));
+    await expect(analyzeIntake(request({ text: SAMPLE_TEXT }), 'r', deps(analyzer))).rejects.toMatchObject({
       code: 'AI_UNAVAILABLE',
     });
+  });
+
+  it.each([429, 500, 503])('maps Gemini HTTP %i (busy) to AI_UPSTREAM_ERROR', async (status) => {
+    const analyzer = fakeAnalyzer();
+    analyzer.structure = () => Promise.reject(Object.assign(new Error('busy'), { status }));
+    await expect(analyzeIntake(request({ text: SAMPLE_TEXT }), 'r', deps(analyzer))).rejects.toMatchObject({
+      code: 'AI_UPSTREAM_ERROR',
+    });
+  });
+
+  it('aborts the Gemini call when the client disconnects', async () => {
+    const analyzer = fakeAnalyzer();
+    let seen: AbortSignal | undefined;
+    analyzer.structure = (_parts, signal) => {
+      seen = signal;
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+      });
+    };
+    const client = new AbortController();
+    const pending = analyzeIntake(request({ text: SAMPLE_TEXT }), 'r', deps(analyzer), client.signal);
+    client.abort();
+    await expect(pending).rejects.toMatchObject({ code: 'AI_TIMEOUT' });
+    expect(seen?.aborted).toBe(true);
+  });
+
+  it('describes the place with coarse coordinates only', () => {
+    expect(describePlace('India', undefined)).toBe('India');
+    expect(describePlace('India', { lat: 12.971_599, lng: 77.594_566 })).toBe(
+      'India, near latitude 12.97, longitude 77.59',
+    );
   });
 
   it('degrades to status "error" when the live check rejects with a non-Error', async () => {
@@ -129,5 +168,26 @@ describe('analyzeIntake', () => {
 
     const textOnly = await analyzeIntake(request({ text: 'help' }), 'r', deps(fakeAnalyzer({ kind: 'returns', output })));
     expect(textOnly.card.facts[0]?.status).toBe('unverified');
+  });
+});
+
+describe('analyzeIntake: live check robustness', () => {
+  it('does not cache a card whose live check failed', async () => {
+    const analyzer = fakeAnalyzer({ kind: 'returns' }, { kind: 'throws' });
+    const d = deps(analyzer);
+    const body = request({ text: SAMPLE_TEXT, liveCheck: true });
+    const first = await analyzeIntake(body, 'r1', d);
+    expect(first.card.liveCheck.status).toBe('error');
+    const second = await analyzeIntake(body, 'r2', d);
+    expect(second.cached).toBe(false);
+  });
+
+  it('redacts unverified phone numbers from the live check note', async () => {
+    const analyzer = fakeAnalyzer(
+      { kind: 'returns' },
+      { kind: 'returns', result: { status: 'corroborated', note: 'Call control room 9876543210 for updates.', sources: [] } },
+    );
+    const { card } = await analyzeIntake(request({ text: SAMPLE_TEXT, liveCheck: true }), 'r', deps(analyzer));
+    expect(card.liveCheck.note).not.toContain('9876543210');
   });
 });

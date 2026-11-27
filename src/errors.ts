@@ -6,6 +6,7 @@ export const ErrorCode = {
   AI_UNAVAILABLE: { status: 503, message: 'The AI service is not configured or unavailable.' },
   AI_TIMEOUT: { status: 504, message: 'The AI service took too long to respond. Please retry.' },
   AI_BAD_OUTPUT: { status: 502, message: 'The AI service returned an unusable answer. Please retry.' },
+  AI_UPSTREAM_ERROR: { status: 502, message: 'The AI service is busy right now. Please retry in a moment.' },
   NOT_FOUND: { status: 404, message: 'Not found.' },
   INTERNAL: { status: 500, message: 'Something went wrong. Please retry.' },
 } as const;

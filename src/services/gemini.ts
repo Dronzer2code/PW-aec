@@ -12,7 +12,7 @@ export interface GeminiAnalyzer {
   /** Structured extraction call. Returns parsed JSON (validated by the caller). */
   structure(parts: GeminiPart[], signal: AbortSignal): Promise<unknown>;
   /** Google Search grounded cross-check of key claims. Never throws for model content issues. */
-  liveCheck(claims: readonly string[], countryName: string, signal: AbortSignal): Promise<LiveCheckResult>;
+  liveCheck(claims: readonly string[], place: string, signal: AbortSignal): Promise<LiveCheckResult>;
 }
 
 /** Thrown when Gemini returns text that is not valid JSON. */
@@ -22,6 +22,9 @@ export class ModelOutputError extends Error {
     this.name = 'ModelOutputError';
   }
 }
+
+export const MAX_OUTPUT_TOKENS = 8192;
+export const THINKING_BUDGET = 1024;
 
 const STATUS_RE = /STATUS:\s*(CORROBORATED|CONTRADICTED|INCONCLUSIVE)/i;
 const MAX_SOURCES = 5;
@@ -90,17 +93,26 @@ export function createGeminiAnalyzer(options: { apiKey: string; model: string })
           responseMimeType: 'application/json',
           responseJsonSchema: modelOutputJsonSchema,
           temperature: 0.2,
+          // Bounded cost and latency: modest thinking, capped output (sourceText can be long).
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          thinkingConfig: { thinkingBudget: THINKING_BUDGET },
           abortSignal: signal,
         },
       });
       return parseModelJson(response.text);
     },
 
-    async liveCheck(claims, countryName, signal) {
+    async liveCheck(claims, place, signal) {
       const response = await ai.models.generateContent({
         model,
-        contents: buildLiveCheckPrompt(claims, countryName),
-        config: { tools: [{ googleSearch: {} }], temperature: 0, abortSignal: signal },
+        contents: buildLiveCheckPrompt(claims, place),
+        config: {
+          tools: [{ googleSearch: {} }],
+          temperature: 0,
+          maxOutputTokens: 1024,
+          thinkingConfig: { thinkingBudget: THINKING_BUDGET },
+          abortSignal: signal,
+        },
       });
       return parseLiveCheck(response.text, response.candidates?.[0]?.groundingMetadata?.groundingChunks);
     },

@@ -7,6 +7,7 @@
 
 const TEL_RE = /^tel:\+?\d{2,15}$/;
 const LANG_RE = /^[a-z]{2,3}(-[a-z\d]{2,8})*$/i;
+const RTL_LANGS = new Set(['ar', 'ur', 'fa', 'he', 'ps', 'sd']);
 const CIRCLE = 'M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z';
 /** Static 24x24 stroke icons; never built from data. */
 const ICONS = {
@@ -191,7 +192,8 @@ function details({ e }, summary, ...content) {
 export function renderActionCard(card, doc = document) {
   const ctx = context(doc);
   const { e, i, badge, section, extLink, callLink } = ctx;
-  const lang = str(card.meta?.outputLanguage);
+  const raw = str(card.meta?.outputLanguage);
+  const lang = LANG_RE.test(raw) ? raw : 'en';
   const contacts = list(card.contacts).map(callLink).filter(Boolean);
   const actions = list(card.actions);
   const facts = list(card.facts);
@@ -207,7 +209,8 @@ export function renderActionCard(card, doc = document) {
 
   return e('article', {
     class: `action-card sev-${lookup(SEVERITY, card.severity) ? card.severity : 'unknown'}`,
-    lang: LANG_RE.test(lang) ? lang : 'en',
+    lang,
+    dir: RTL_LANGS.has(lang.split('-')[0].toLowerCase()) ? 'rtl' : 'ltr',
     'aria-labelledby': 'card-title',
   },
     header(ctx, card),

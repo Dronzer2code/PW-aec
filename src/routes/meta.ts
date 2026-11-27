@@ -4,12 +4,13 @@ import { LANGUAGES } from '../domain/languages.js';
 import { MAX_FILE_BYTES, MAX_FILES, MAX_TEXT_CHARS } from '../domain/schema.js';
 
 /** `GET /api/config` — public UI configuration (no secrets). */
-export function configRouter(options: { aiAvailable: boolean }): Router {
+export function configRouter(options: { aiAvailable: boolean; requestTimeoutMs: number }): Router {
   const router = Router();
   const payload = Object.freeze({
     languages: LANGUAGES,
     countries: listCountries(),
     aiAvailable: options.aiAvailable,
+    requestTimeoutMs: options.requestTimeoutMs,
     limits: { maxTextChars: MAX_TEXT_CHARS, maxFiles: MAX_FILES, maxFileBytes: MAX_FILE_BYTES },
   });
 

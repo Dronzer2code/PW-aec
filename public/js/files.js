@@ -1,6 +1,6 @@
 /** Intake file helpers: validation, base64 encoding and image downscaling. Limits mirror src/domain/schema.ts. */
 
-/** MIME types accepted by POST /api/analyze. */
+/** MIME types accepted by POST /api/analyze. Keep in sync with ALLOWED_MIME_TYPES in src/domain/schema.ts (not exposed via /api/config). */
 export const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav'];
 /** Defaults, replaced by `limits` from GET /api/config. */
 export const DEFAULT_LIMITS = Object.freeze({ maxFiles: 4, maxFileBytes: 5 * 1024 * 1024 });

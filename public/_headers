@@ -1,0 +1,15 @@
+# Security headers for static files served by Cloudflare Static Assets.
+# Mirrors src/middleware/security.ts (API responses get them from helmet).
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(self), geolocation=(self), payment=(), usb=()
+  Cache-Control: no-cache
+
+/favicon.svg
+  Cache-Control: public, max-age=86400

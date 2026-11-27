@@ -11,7 +11,7 @@ import {
   shouldDownscale,
   validateFiles,
 } from '../../public/js/files.js';
-import { SAMPLES } from '../../public/js/samples.js';
+import { SAMPLES, drawSampleImage } from '../../public/js/samples.js';
 import { describeMicError, pickMimeType } from '../../public/js/recorder.js';
 
 const MB = 1024 * 1024;
@@ -142,14 +142,32 @@ describe('recorder helpers', () => {
 });
 
 describe('SAMPLES', () => {
-  it('provides four distinct, well-formed sample Intakes', () => {
-    expect(SAMPLES).toHaveLength(4);
-    expect(new Set(SAMPLES.map((s) => s.id)).size).toBe(4);
+  it('provides six distinct, well-formed fictional sample Intakes', () => {
+    expect(SAMPLES).toHaveLength(6);
+    expect(new Set(SAMPLES.map((s) => s.id)).size).toBe(6);
     for (const sample of SAMPLES) {
       expect(sample.title.length).toBeGreaterThan(3);
-      expect(sample.text.length).toBeGreaterThan(80);
+      expect(sample.text.length).toBeGreaterThan(20);
       expect(sample.text.length).toBeLessThanOrEqual(10_000);
     }
-    expect(SAMPLES.filter((s) => s.liveCheck)).toHaveLength(1);
+    expect(SAMPLES.filter((s) => s.liveCheck).map((s) => s.id)).toEqual(['flood-warning', 'traffic-weather']);
+    const photo = SAMPLES.find((s) => s.image);
+    expect(photo?.image?.name).toBe('prescription-sample.png');
+    expect(photo?.image?.lines.join(' ')).toContain('(fictional)');
+  });
+
+  it('draws a sample image to a PNG blob', async () => {
+    const fillText = vi.fn();
+    const ctx = new Proxy({ fillText }, { get: (t, key) => (key === 'fillText' ? t.fillText : vi.fn()) });
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((cb, type) => cb(new Blob(['png'], { type })));
+    const blob = await drawSampleImage(['Rx', 'Allergy: Sulfa']);
+    expect(blob?.type).toBe('image/png');
+    expect(fillText).toHaveBeenCalledWith('Allergy: Sulfa', 0, 0);
+  });
+
+  it('returns null when canvas drawing is unavailable', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    await expect(drawSampleImage(['x'])).resolves.toBeNull();
   });
 });

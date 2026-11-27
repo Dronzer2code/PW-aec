@@ -1,5 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import helmet from 'helmet';
 import { AppError, toEnvelope } from '../errors.js';
 
@@ -38,13 +38,26 @@ export function permissionsPolicy(_req: Request, res: Response, next: NextFuncti
   next();
 }
 
+/**
+ * Client IP used as the rate-limit key. On Cloudflare Workers the edge sets
+ * `CF-Connecting-IP` (clients cannot forge it there); everywhere else the header
+ * is ignored and `req.ip` (correct on Cloud Run via `trust proxy`) is used.
+ * IPv6 addresses are grouped by /56 subnet so one client cannot rotate addresses.
+ */
+export function clientKey(req: Request, trustCloudflareHeader: boolean): string {
+  const ip = (trustCloudflareHeader ? req.get('cf-connecting-ip') : undefined) ?? req.ip ?? 'unknown';
+  return ipKeyGenerator(ip);
+}
+
 /** Per-IP rate limiter for the API, answering with the standard error envelope. */
-export function apiRateLimiter(perMinute: number): RequestHandler {
+export function apiRateLimiter(perMinute: number, options: { behindCloudflare?: boolean } = {}): RequestHandler {
+  const trustCloudflareHeader = options.behindCloudflare ?? false;
   return rateLimit({
     windowMs: 60_000,
     limit: perMinute,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
+    keyGenerator: (req) => clientKey(req, trustCloudflareHeader),
     handler: (req, res) => {
       const err = new AppError('RATE_LIMITED');
       res.status(err.status).json(toEnvelope(err, req.requestId));

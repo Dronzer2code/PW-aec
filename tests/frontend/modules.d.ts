@@ -47,8 +47,10 @@ declare module '*/public/js/samples.js' {
     title: string;
     text: string;
     liveCheck?: boolean;
+    image?: { name: string; lines: string[] };
   }
   export const SAMPLES: readonly SampleIntake[];
+  export function drawSampleImage(lines: string[], doc?: Document): Promise<Blob | null>;
 }
 
 declare module '*/public/js/recorder.js' {
@@ -56,6 +58,10 @@ declare module '*/public/js/recorder.js' {
   export function isRecordingSupported(): boolean;
   export function pickMimeType(Recorder?: { isTypeSupported(type: string): boolean }): string;
   export function describeMicError(err: unknown): string;
+  export function startRecording(options?: {
+    maxMs?: number;
+    onTick?: (elapsedMs: number) => void;
+  }): Promise<{ stop: () => Promise<Blob>; done: Promise<Blob> }>;
 }
 
 /** Side-effect module: boots the UI against the current document. */

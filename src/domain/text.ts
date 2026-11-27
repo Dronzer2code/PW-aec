@@ -17,27 +17,55 @@ export function normalizeForMatch(input: string): string {
     .trim();
 }
 
+/** Negation words (English, Hindi/Hinglish, Bengali) that must appear in the input if a quote uses them. */
+const NEGATION_WORDS: ReadonlySet<string> = new Set(['not', 'no', 'never', 'none', 'without', 'nahi', 'nahin', 'na', 'नहीं', 'ना', 'না', 'নেই']);
+
 /** Minimum normalized evidence length; shorter quotes are too generic to prove anything. */
 export const MIN_EVIDENCE_CHARS = 3;
 
+/** Minimum share of evidence words that must appear inside one corpus window for a fuzzy match. */
+export const FUZZY_MATCH_RATIO = 0.8;
+
+const isNumber = (w: string): boolean => /^\p{N}+$/u.test(w);
+
+/** True when the words just before or after a match negate it ("not diabetic", "diabetic nahi"). */
+function negatedAround(corpusWords: readonly string[], start: number, end: number, needle: readonly string[]): boolean {
+  const neighbours = [corpusWords[start - 1], corpusWords[end]].filter((w): w is string => w !== undefined);
+  return neighbours.some((w) => NEGATION_WORDS.has(w) && !needle.includes(w));
+}
+
 /**
- * True when `evidence` occurs in `corpus` after normalization. When an exact
- * match fails, accepts the quote if at least 80% of its words (and all of its
- * numbers) appear in the corpus — models sometimes drop or reorder a filler word.
+ * True when `evidence` occurs in `corpus` after normalization, without a
+ * negation the quote does not contain. If there is no exact match, the quote is
+ * accepted when one nearby window holds ≥ 80% of its words, all of its numbers
+ * and negations, and no extra negation (models sometimes drop a filler word).
  */
 export function containsEvidence(corpus: string, evidence: string): boolean {
   const needle = normalizeForMatch(evidence);
   if (needle.length < MIN_EVIDENCE_CHARS) return false;
   const haystack = normalizeForMatch(corpus);
   if (haystack.length === 0) return false;
-  if (haystack.includes(needle)) return true;
 
-  const corpusWords = new Set(haystack.split(' '));
+  const corpusWords = haystack.split(' ');
   const words = needle.split(' ');
-  const numbers = words.filter((w) => /^\p{N}+$/u.test(w));
-  if (numbers.some((n) => !corpusWords.has(n))) return false;
-  const hits = words.filter((w) => corpusWords.has(w)).length;
-  return words.length >= 3 && hits / words.length >= 0.8;
+
+  for (let i = 0; i + words.length <= corpusWords.length; i += 1) {
+    if (words.every((w, k) => corpusWords[i + k] === w) && !negatedAround(corpusWords, i, i + words.length, words)) {
+      return true;
+    }
+  }
+  if (words.length < 3) return false;
+
+  const required = words.filter((w) => isNumber(w) || NEGATION_WORDS.has(w));
+  const windowSize = words.length + 2;
+  for (let i = 0; i < corpusWords.length; i += 1) {
+    const window = corpusWords.slice(i, i + windowSize);
+    if (window.some((w) => NEGATION_WORDS.has(w) && !words.includes(w))) continue;
+    if (required.some((w) => !window.includes(w))) continue;
+    const hits = words.filter((w) => window.includes(w)).length;
+    if (hits / words.length >= FUZZY_MATCH_RATIO) return true;
+  }
+  return false;
 }
 
 /** Truncates to `max` characters on a code point boundary, appending an ellipsis. */

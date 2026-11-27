@@ -99,6 +99,16 @@ npm run dev                 # http://localhost:8080
 | `npm test` | tests with coverage |
 | `npm run build && npm start` | production build |
 
+## Deploy to Cloudflare Workers (free, no card)
+
+```bash
+npx wrangler login
+npx wrangler secret put GEMINI_API_KEY
+npm run cf:deploy          # prints https://lifebridge.<you>.workers.dev
+```
+
+`src/worker.ts` runs the same Express app through Cloudflare's Node.js HTTP support (`nodejs_compat`). Cloudflare serves the static UI from the edge with the security headers in `public/_headers`.
+
 ## Deploy to Cloud Run
 
 ```bash

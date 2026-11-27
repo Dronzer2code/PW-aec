@@ -176,7 +176,12 @@ describe('renderActionCard', () => {
 
   it('sets lang to the output language and falls back for invalid tags', () => {
     const base = makeCard();
-    expect(renderActionCard(makeCard({ meta: { ...base.meta, outputLanguage: 'hi' } })).lang).toBe('hi');
+    const hindi = renderActionCard(makeCard({ meta: { ...base.meta, outputLanguage: 'hi' } }));
+    expect(hindi.lang).toBe('hi');
+    expect(hindi.dir).toBe('ltr');
+    for (const rtl of ['ar', 'ur']) {
+      expect(renderActionCard(makeCard({ meta: { ...base.meta, outputLanguage: rtl } })).dir).toBe('rtl');
+    }
     expect(renderActionCard(makeCard({ meta: { ...base.meta, outputLanguage: '"><x' } })).lang).toBe('en');
   });
 

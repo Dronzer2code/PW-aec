@@ -3,26 +3,27 @@
  * All card markup is built by render.js.
  */
 import { buildPlainText, elementFactory, renderActionCard, renderEmergencyFallback, renderSkeleton, severityLabel } from './render.js';
-import { SAMPLES } from './samples.js';
+import { SAMPLES, drawSampleImage } from './samples.js';
 import { DEFAULT_LIMITS, downscaleImage, fileToBase64, formatBytes, normalizeMimeType, safeFileName, validateFiles } from './files.js';
 import { MAX_RECORDING_MS, describeMicError, isRecordingSupported, startRecording } from './recorder.js';
 
-const TIMEOUT_MS = 60_000;
 const DEFAULT_COUNTRY = { code: 'IN', name: 'India', emergency: '112' };
 const ERRORS = {
   VALIDATION_ERROR: 'Some of the input could not be accepted. Check the text and files, then try again.',
   PAYLOAD_TOO_LARGE: 'The attached files are too large to send. Remove a file or use smaller images.',
-  RATE_LIMITED: 'Too many requests right now. Please wait a minute, then try again.',
-  AI_UNAVAILABLE: 'The AI service is not available right now. If anyone is in danger, call the emergency number shown.',
+  RATE_LIMITED: 'Too many requests right now. Please wait a moment; the Try again button will appear.',
+  AI_UNAVAILABLE: 'The AI service is not configured on this server. If anyone is in danger, call the emergency number shown.',
   AI_TIMEOUT: 'The AI took too long to respond. Please try again.',
   AI_BAD_OUTPUT: 'The AI returned an answer we could not verify. Please try again.',
+  AI_UPSTREAM_ERROR: 'The AI service is busy right now. Please try again in a moment.',
   INTERNAL: 'Something went wrong on our side. Please try again.',
   NETWORK: 'Could not reach LifeBridge. Check your connection and try again.',
-  TIMEOUT: 'The request took longer than 60 seconds and was cancelled. Please try again.',
+  TIMEOUT: 'The request took too long and was cancelled. Please try again.',
 };
 /** Failures where the emergency number is shown immediately instead of an Action Card. */
-const FALLBACK = new Set(['AI_UNAVAILABLE', 'AI_TIMEOUT', 'AI_BAD_OUTPUT', 'INTERNAL', 'NETWORK', 'TIMEOUT']);
-const RETRY = new Set([...FALLBACK, 'RATE_LIMITED'].filter((c) => c !== 'AI_UNAVAILABLE'));
+const FALLBACK = new Set(['AI_UNAVAILABLE', 'AI_TIMEOUT', 'AI_BAD_OUTPUT', 'AI_UPSTREAM_ERROR', 'INTERNAL', 'NETWORK', 'TIMEOUT']);
+/** Transient failures that offer a Try again button. */
+const RETRY = new Set(['AI_TIMEOUT', 'AI_BAD_OUTPUT', 'AI_UPSTREAM_ERROR', 'INTERNAL', 'NETWORK', 'TIMEOUT', 'RATE_LIMITED']);
 
 const $ = (id) => document.getElementById(id);
 const e = elementFactory(document);
@@ -34,24 +35,31 @@ const toolbar = $('card-toolbar');
 const submitBtn = $('submit-btn');
 const recordBtn = $('record-btn');
 const speakBtn = $('speak-btn');
+const retryBtn = $('retry-btn');
 
 const state = {
   limits: { maxTextChars: 10_000, ...DEFAULT_LIMITS },
+  timeoutMs: 75_000,
   countries: [DEFAULT_COUNTRY],
   /** @type {{ id: number, file: File, mimeType: string }[]} */
   files: [],
   nextId: 1,
   card: null,
+  /** True while the microphone permission prompt is open. */
+  starting: false,
   /** @type {{ stop: () => Promise<Blob>, attached: Promise<void> } | null} */
   recording: null,
   busy: false,
+  retryTimer: 0,
 };
 
 const announce = (msg) => { $('status').textContent = msg; };
-function showError(msg, retry = false) {
+function showError(msg, retryAfterMs = -1) {
+  clearTimeout(state.retryTimer);
   $('error-text').textContent = msg;
   $('error').classList.toggle('is-visible', Boolean(msg));
-  $('retry-btn').hidden = !retry;
+  retryBtn.hidden = true;
+  if (retryAfterMs >= 0) state.retryTimer = setTimeout(() => { retryBtn.hidden = false; }, retryAfterMs);
 }
 
 /* ---------- config ---------- */
@@ -60,7 +68,7 @@ async function loadConfig() {
   try {
     const res = await fetch('/api/config', { headers: { Accept: 'application/json' } });
     if (!res.ok) throw new Error(String(res.status));
-    const { languages, countries, limits, aiAvailable } = await res.json();
+    const { languages, countries, limits, aiAvailable, requestTimeoutMs } = await res.json();
     if (Array.isArray(languages) && languages.length) {
       $('language-select').replaceChildren(...languages.map((l) => {
         const option = new Option(l.name === l.nativeName ? l.name : `${l.nativeName} (${l.name})`, l.code, false, l.code === 'en');
@@ -72,6 +80,7 @@ async function loadConfig() {
       state.countries = countries;
       $('country-select').replaceChildren(...countries.map((c) => new Option(`${c.name} — emergency ${c.emergency}`, c.code)));
     }
+    if (Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0) state.timeoutMs = requestTimeoutMs;
     state.limits = { ...state.limits, ...limits };
     text.maxLength = state.limits.maxTextChars;
     updateCounter();
@@ -90,17 +99,28 @@ function updateCounter() {
   $('char-count').textContent = `${fmt(text.value.length)} / ${fmt(state.limits.maxTextChars)} characters`;
 }
 
+async function loadSample(sample) {
+  text.value = sample.text;
+  $('live-check').checked = Boolean(sample.liveCheck);
+  updateCounter();
+  showError('');
+  text.focus();
+  let note = sample.liveCheck ? ' Live web check turned on.' : '';
+  if (sample.image) {
+    const blob = await drawSampleImage(sample.image.lines);
+    if (blob) {
+      state.files = state.files.filter((f) => f.file.name !== sample.image.name);
+      await addFiles([new File([blob], sample.image.name, { type: 'image/png' })]);
+      note += ` Sample image ${sample.image.name} attached.`;
+    }
+  }
+  announce(`Sample loaded: ${sample.title}.${note}`);
+}
+
 function renderSamples() {
   $('sample-list').replaceChildren(...SAMPLES.map((sample) => {
     const btn = e('button', { type: 'button', class: 'btn btn-chip', text: sample.title });
-    btn.addEventListener('click', () => {
-      text.value = sample.text;
-      $('live-check').checked = Boolean(sample.liveCheck);
-      updateCounter();
-      showError('');
-      text.focus();
-      announce(`Sample loaded: ${sample.title}.${sample.liveCheck ? ' Live web check turned on.' : ''}`);
-    });
+    btn.addEventListener('click', () => loadSample(sample));
     return btn;
   }));
 }
@@ -137,12 +157,11 @@ async function addFiles(fileList) {
 
 const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
 
+/** Toggle pattern: the accessible name stays "Record voice note"; state is exposed via aria-pressed. */
 function setRecordingUi(active) {
   recordBtn.setAttribute('aria-pressed', String(active));
-  recordBtn.classList.toggle('is-recording', active);
-  $('record-label').textContent = active ? 'Stop recording' : 'Record voice note';
   $('record-timer').hidden = !active;
-  $('record-timer').textContent = `0:00 / ${clock(MAX_RECORDING_MS)}`;
+  $('record-timer').textContent = `Recording 0:00 / ${clock(MAX_RECORDING_MS)}`;
 }
 
 /** Waits for the recording to end and attaches it; resolves once it is in `state.files`. */
@@ -162,16 +181,20 @@ async function attachRecording(done) {
 
 async function toggleRecording() {
   if (state.recording) return void state.recording.stop();
+  if (state.starting) return; // permission prompt still open: ignore repeated clicks
+  state.starting = true;
   showError('');
   try {
     const { stop, done } = await startRecording({
-      onTick: (ms) => { $('record-timer').textContent = `${clock(ms)} / ${clock(MAX_RECORDING_MS)}`; },
+      onTick: (ms) => { $('record-timer').textContent = `Recording ${clock(ms)} / ${clock(MAX_RECORDING_MS)}`; },
     });
     setRecordingUi(true);
-    announce('Recording started. Press Stop recording when you are done.');
+    announce('Recording started. Press Record voice note again to stop.');
     state.recording = { stop, attached: attachRecording(done) };
   } catch (err) {
     showError(describeMicError(err));
+  } finally {
+    state.starting = false;
   }
 }
 
@@ -205,10 +228,10 @@ async function buildRequest() {
   return body;
 }
 
-/** POSTs the Intake. Never throws: returns `{ card }` or `{ code, message, requestId }`. */
+/** POSTs the Intake. Never throws: returns `{ card }` or `{ code, message, details, requestId, retryAfterMs }`. */
 async function postAnalyze(body) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), state.timeoutMs);
   try {
     const res = await fetch('/api/analyze', {
       method: 'POST',
@@ -220,17 +243,25 @@ async function postAnalyze(body) {
     if (res.ok && data && !data.error) return { card: data };
     const err = data?.error ?? {};
     const code = err.code ?? ({ 413: 'PAYLOAD_TOO_LARGE', 429: 'RATE_LIMITED' }[res.status] || 'INTERNAL');
-    return { code: String(code), message: String(err.message ?? ''), requestId: err.requestId };
+    const retryAfter = Number(res.headers.get('Retry-After') ?? Number.NaN);
+    return {
+      code: String(code),
+      message: String(err.message ?? ''),
+      details: Array.isArray(err.details) ? err.details.map(String) : [],
+      requestId: err.requestId,
+      retryAfterMs: Number.isFinite(retryAfter) ? Math.min(retryAfter, 60) * 1000 : 20_000,
+    };
   } catch (err) {
-    return { code: err?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK', message: '' };
+    return { code: err?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK' };
   } finally {
     clearTimeout(timer);
   }
 }
 
+/** aria-disabled (not `disabled`) keeps focus on the button while busy; `state.busy` blocks re-submits. */
 function setBusy(busy) {
   state.busy = busy;
-  submitBtn.disabled = busy;
+  submitBtn.setAttribute('aria-disabled', String(busy));
   submitBtn.textContent = busy ? 'Creating Action Card…' : 'Create Action Card';
   region.setAttribute('aria-busy', String(busy));
 }
@@ -242,10 +273,11 @@ function showCard(card) {
   toolbar.hidden = !card;
 }
 
-function handleFailure({ code, message, requestId }) {
+function handleFailure({ code, message = '', details = [], requestId, retryAfterMs = 0 }) {
   const known = Object.hasOwn(ERRORS, code) ? code : 'INTERNAL';
-  const detail = code === 'VALIDATION_ERROR' && message ? ` (${message})` : '';
-  showError(`${ERRORS[known]}${detail}${requestId ? ` Reference: ${requestId}.` : ''}`, RETRY.has(known));
+  const info = known === 'VALIDATION_ERROR' ? (details.length ? details.join('; ') : message).slice(0, 200) : '';
+  const msg = `${ERRORS[known]}${info ? ` (${info})` : ''}${requestId ? ` Reference: ${requestId}.` : ''}`;
+  showError(msg, RETRY.has(known) ? (known === 'RATE_LIMITED' ? retryAfterMs : 0) : -1);
   announce('');
   if (!FALLBACK.has(known)) return showCard(state.card);
   showCard(null);
@@ -264,7 +296,7 @@ async function submit() {
     state.recording.stop();
     await state.recording.attached;
   }
-  announce('Analyzing your input. This can take up to 30 seconds…');
+  announce('Analyzing your input. This usually takes 5–20 seconds…');
   toolbar.hidden = true;
   region.replaceChildren(renderSkeleton());
   try {
@@ -282,10 +314,10 @@ async function submit() {
 
 /* ---------- toolbar ---------- */
 
+/** Toggle pattern: accessible name stays "Read aloud"; aria-pressed shows whether it is speaking. */
 function stopSpeaking() {
   globalThis.speechSynthesis?.cancel();
   speakBtn.setAttribute('aria-pressed', 'false');
-  $('speak-label').textContent = 'Read aloud';
 }
 
 function toggleSpeaking() {
@@ -298,7 +330,6 @@ function toggleSpeaking() {
   speechSynthesis.cancel();
   speechSynthesis.speak(utterance);
   speakBtn.setAttribute('aria-pressed', 'true');
-  $('speak-label').textContent = 'Stop reading';
 }
 
 async function copySms() {
@@ -340,7 +371,7 @@ form.addEventListener('submit', (event) => {
   event.preventDefault();
   submit();
 });
-$('retry-btn').addEventListener('click', submit);
+retryBtn.addEventListener('click', submit);
 speakBtn.addEventListener('click', toggleSpeaking);
 $('copy-btn').addEventListener('click', copySms);
 $('download-btn').addEventListener('click', downloadJson);

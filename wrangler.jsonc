@@ -1,0 +1,25 @@
+// Cloudflare Workers deployment (free plan, no card required).
+//   npx wrangler login
+//   npx wrangler secret put GEMINI_API_KEY
+//   npm run cf:deploy
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lifebridge",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-11-01",
+  // nodejs_compat enables node:http (Express via httpServerHandler), node:crypto and process.env.
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    // UI files are served directly by Cloudflare's edge; only the API reaches the Worker.
+    "directory": "./public",
+    "not_found_handling": "none",
+    "run_worker_first": ["/api/*", "/healthz"]
+  },
+  "vars": {
+    "NODE_ENV": "production",
+    "GEMINI_MODEL": "gemini-flash-latest",
+    "RATE_LIMIT_PER_MINUTE": "20",
+    "GEMINI_TIMEOUT_MS": "30000"
+  },
+  "observability": { "enabled": true }
+}

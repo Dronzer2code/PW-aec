@@ -122,10 +122,11 @@ describe('runVerification: evidence grounding', () => {
     expect(check(r, 'evidence_grounding')?.status).toBe('pass');
   });
 
-  it('scores an answer with zero facts as fully grounded', () => {
+  it('does not count an answer with zero facts as grounded', () => {
     const r = verify({ facts: [] });
-    expect(r.report.groundingScore).toBe(1);
-    expect(check(r, 'evidence_grounding')?.message).toBe('0 of 0 facts are traceable to the input (100%).');
+    expect(r.report.groundingScore).toBe(0);
+    expect(check(r, 'evidence_grounding')?.status).toBe('warn');
+    expect(r.report.status).toBe('needs_review');
   });
 });
 
@@ -215,7 +216,7 @@ describe('dosage guard', () => {
     expect(r.actions[0]?.instruction).toBe(`Take ${DOSAGE_REPLACEMENT} paracetamol now`);
     expect(r.actions[0]?.flags).toEqual(['dosage_removed']);
     expect(check(r, 'dosage_guard')?.message).toBe(
-      "Removed medication doses from 1 action(s); follow a doctor's prescription.",
+      "Removed 1 suggested medication dose(s); follow a doctor's prescription.",
     );
   });
 
@@ -302,9 +303,11 @@ describe('mentionsEmergencyCall', () => {
     },
   );
 
-  it('recognizes a verified number on its own', () => {
-    expect(mentionsEmergencyCall(action('112 now, quickly'), 'IN')).toBe(true);
-    expect(mentionsEmergencyCall(action('Use 911'), 'US')).toBe(true);
+  it('requires a calling verb next to a verified number', () => {
+    expect(mentionsEmergencyCall(action('Call 112 now, quickly'), 'IN')).toBe(true);
+    expect(mentionsEmergencyCall(action('Dial 911'), 'US')).toBe(true);
+    expect(mentionsEmergencyCall(action('Move 100 metres away from the fire'), 'IN')).toBe(false);
+    expect(mentionsEmergencyCall(action('तुरंत 112 पर कॉल करें'), 'IN')).toBe(true);
   });
 
   it('does not treat a longer number containing a verified number as a call', () => {
@@ -379,5 +382,28 @@ describe('regressions', () => {
   it('does not treat fluid volumes as medication doses', () => {
     expect(stripDosages('Give 200 ml of ORS water slowly').changed).toBe(false);
     expect(stripDosages('Give 5 ml cough syrup').changed).toBe(true);
+  });
+});
+
+describe('guards on every model-written field', () => {
+  it('strips doses from the summary and red flags', () => {
+    const r = verify({ summary: 'Chew 300 mg aspirin now.', redFlags: ['Take 2 tablets if pain returns'] });
+    expect(r.summary).not.toMatch(/300 mg/);
+    expect(r.redFlags[0]).not.toMatch(/2 tablets/);
+    expect(check(r, 'dosage_guard')?.message).toMatch(/Removed 2/);
+  });
+
+  it('redacts unknown numbers in unverified fact values but keeps grounded ones', () => {
+    const r = verify(
+      {
+        facts: [
+          { label: 'Son phone', value: '9876543210', evidence: 'son 9876543210', confidence: 0.9 },
+          { label: 'Hotline', value: 'Call 1077 control room', evidence: 'invented quote not in input', confidence: 0.9 },
+        ],
+      },
+      { userText: 'please call my son 9876543210 quickly' },
+    );
+    expect(r.facts[0]?.value).toBe('9876543210');
+    expect(r.facts[1]?.value).toContain(REDACTED_NUMBER);
   });
 });

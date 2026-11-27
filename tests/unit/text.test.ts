@@ -104,3 +104,25 @@ describe('squish', () => {
     expect(squish('  call\n\n the\tdoctor  ')).toBe('call the doctor');
   });
 });
+
+describe('containsEvidence negation safety', () => {
+  it('rejects a quote that adds a negation missing from the input', () => {
+    expect(containsEvidence('the patient is diabetic since 2004', 'the patient is not diabetic')).toBe(false);
+  });
+
+  it('rejects a quote whose matching words are negated in the input', () => {
+    expect(containsEvidence('the patient is not diabetic', 'patient is diabetic')).toBe(false);
+    expect(containsEvidence('he is not diabetic', 'diabetic')).toBe(false);
+    expect(containsEvidence('sugar wala nahi hai, diabetic nahi', 'diabetic')).toBe(false);
+  });
+
+  it('accepts a quote with the same negation as the input', () => {
+    expect(containsEvidence('the patient is not diabetic at all', 'patient is not diabetic')).toBe(true);
+    expect(containsEvidence('helmet nahi tha', 'helmet nahi tha')).toBe(true);
+  });
+
+  it('requires fuzzy matches to fall inside one nearby window', () => {
+    expect(containsEvidence('bleeding from the head and he is unconscious', 'bleeding from head unconscious')).toBe(false);
+    expect(containsEvidence('heavy bleeding from the head right now', 'heavy bleeding from head right now')).toBe(true);
+  });
+});

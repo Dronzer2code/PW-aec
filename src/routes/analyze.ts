@@ -17,7 +17,13 @@ export function analyzeRouter(deps: AnalyzeDeps): Router {
       );
     }
 
-    const { card, cached } = await analyzeIntake(parsed.data, req.requestId, deps);
+    // Stop paying for Gemini work as soon as the browser gives up or navigates away.
+    const disconnected = new AbortController();
+    res.on('close', () => {
+      if (!res.writableEnded) disconnected.abort();
+    });
+
+    const { card, cached } = await analyzeIntake(parsed.data, req.requestId, deps, disconnected.signal);
     deps.logger.info('action card created', {
       requestId: req.requestId,
       cached,

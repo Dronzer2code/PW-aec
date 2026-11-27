@@ -19,13 +19,24 @@ export interface AppDeps {
   cacheMaxEntries: number;
   cacheTtlMs: number;
   geminiTimeoutMs: number;
-  publicDir?: string;
+  /** Directory served as static files; `null` when the platform serves them (Cloudflare Static Assets). */
+  publicDir?: string | null;
+  /** gzip responses in-process; disable where the edge already compresses (Cloudflare). Default true. */
+  compress?: boolean;
+  /** True only on Cloudflare Workers, where `CF-Connecting-IP` is set by the edge. Default false. */
+  behindCloudflare?: boolean;
 }
 
 /** Max JSON body: 4 files × 5 MB base64-encoded (~6.7 MB each) plus text. */
 export const JSON_BODY_LIMIT = '28mb';
 
-const DEFAULT_PUBLIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
+/** Client-side budget: structuring + live check calls plus network headroom. */
+export function requestTimeoutMs(geminiTimeoutMs: number): number {
+  return geminiTimeoutMs * 2 + 10_000;
+}
+
+/** `public/` next to `src/` (tsx) or `dist/` (compiled); resolved lazily so non-file runtimes never touch it. */
+const defaultPublicDir = (): string => fileURLToPath(new URL('../public', import.meta.url));
 
 /** Express application factory. Pure wiring; no network listeners are opened here. */
 export function createApp(deps: AppDeps): Express {
@@ -36,7 +47,7 @@ export function createApp(deps: AppDeps): Express {
   app.use(requestId);
   app.use(securityHeaders());
   app.use(permissionsPolicy);
-  app.use(compression());
+  if (deps.compress ?? true) app.use(compression());
 
   app.get('/healthz', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -45,24 +56,29 @@ export function createApp(deps: AppDeps): Express {
 
   const cache = new LruCache<ActionCard>(deps.cacheMaxEntries, deps.cacheTtlMs);
   const api = express.Router();
-  api.use(apiRateLimiter(deps.rateLimitPerMinute));
+  api.use(apiRateLimiter(deps.rateLimitPerMinute, { behindCloudflare: deps.behindCloudflare ?? false }));
   api.use(express.json({ limit: JSON_BODY_LIMIT }));
-  api.use(configRouter({ aiAvailable: deps.analyzer !== undefined }));
+  api.use(
+    configRouter({ aiAvailable: deps.analyzer !== undefined, requestTimeoutMs: requestTimeoutMs(deps.geminiTimeoutMs) }),
+  );
   api.use(
     analyzeRouter({ analyzer: deps.analyzer, cache, logger: deps.logger, timeoutMs: deps.geminiTimeoutMs }),
   );
   api.use(notFound);
   app.use('/api', api);
 
-  app.use(
-    express.static(deps.publicDir ?? DEFAULT_PUBLIC_DIR, {
-      index: 'index.html',
-      maxAge: '1h',
-      setHeaders: (res, filePath) => {
-        if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
-      },
-    }),
-  );
+  if (deps.publicDir !== null) {
+    app.use(
+      express.static(deps.publicDir ?? defaultPublicDir(), {
+        index: 'index.html',
+        // Unversioned module URLs: revalidate with ETag so a deploy never mixes old and new modules.
+        // Icons rarely change and are cached for a day.
+        setHeaders: (res, filePath) => {
+          res.setHeader('Cache-Control', /\.(svg|png|ico)$/.test(filePath) ? 'public, max-age=86400' : 'no-cache');
+        },
+      }),
+    );
+  }
   app.use(notFound);
   app.use(errorHandler(deps.logger));
   return app;

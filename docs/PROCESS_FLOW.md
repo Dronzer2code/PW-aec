@@ -44,7 +44,7 @@ flowchart TD
 
 ```text
 facts → grounded (quote in user text) | transcribed (quote in model sourceText) | unverified
-groundingScore = (grounded + transcribed) / total facts   (1 when no facts)
+groundingScore = (grounded + transcribed) / total facts   (0 when no facts)
 
 status = verified      if no check failed AND evidence_grounding, low_confidence, prompt_injection pass
 status = needs_review  otherwise  → UI shows "Needs human review" banner + per-fact badges

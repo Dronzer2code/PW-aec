@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { modelOutputJsonSchema } from '../../src/domain/schema.js';
 import {
   createGeminiAnalyzer,
+  MAX_OUTPUT_TOKENS,
   ModelOutputError,
   parseLiveCheck,
   parseModelJson,
   safeHttpUrl,
+  THINKING_BUDGET,
 } from '../../src/services/gemini.js';
 import { SYSTEM_INSTRUCTION } from '../../src/services/prompt.js';
 import { validModelOutput } from '../helpers/fixtures.js';
@@ -160,6 +162,8 @@ describe('createGeminiAnalyzer', () => {
         responseMimeType: 'application/json',
         responseJsonSchema: modelOutputJsonSchema,
         temperature: 0.2,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        thinkingConfig: { thinkingBudget: THINKING_BUDGET },
         abortSignal: signal,
       },
     });
@@ -201,7 +205,13 @@ describe('createGeminiAnalyzer', () => {
     };
     expect(request.model).toBe('gemini-test');
     expect(request.contents).toContain('1. Cyclone in Chennai');
-    expect(request.config).toEqual({ tools: [{ googleSearch: {} }], temperature: 0, abortSignal: signal });
+    expect(request.config).toEqual({
+      tools: [{ googleSearch: {} }],
+      temperature: 0,
+      maxOutputTokens: 1024,
+      thinkingConfig: { thinkingBudget: THINKING_BUDGET },
+      abortSignal: signal,
+    });
   });
 
   it('liveCheck() tolerates a reply without candidates', async () => {

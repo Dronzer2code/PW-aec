@@ -102,7 +102,9 @@ export function redactUnknownNumbers(text: string, country: CountryCode): { text
 const CALL_VERB_RE = /\b(call|dial|phone|ring|contact|alert)\b/i;
 const EMERGENCY_SERVICE_RE =
   /\b(emergency|ambulance|police|fire\s*(brigade|service|department)|rescue|responders?|helpline|paramedics?)\b/i;
-const NEGATED_RE = /\b(do\s+not|don't|never|avoid)\s+(touch\s+or\s+)?(call|dial|phone|ring|contact|alert)\b/i;
+/** Calling verbs in common Indian output languages (Hindi/Marathi "कॉल/फोन", Bengali "কল/ফোন", Hinglish). */
+const LOCAL_CALL_RE = /(कॉल|फ़ोन|फोन|কল|ফোন|call\s+karo|phone\s+karo)/iu;
+const NEGATED_RE =/\b(do\s+not|don't|never|avoid)\s+(touch\s+or\s+)?(call|dial|phone|ring|contact|alert)\b/i;
 
 /**
  * True when an action actually tells someone to call emergency services: a
@@ -111,8 +113,11 @@ const NEGATED_RE = /\b(do\s+not|don't|never|avoid)\s+(touch\s+or\s+)?(call|dial|
  */
 export function mentionsEmergencyCall(action: ModelAction, country: CountryCode): boolean {
   const text = action.instruction;
-  if (Array.from(allowedNumbers(country)).some((n) => new RegExp(`(^|\\D)${n}(\\D|$)`).test(text))) return true;
-  return CALL_VERB_RE.test(text) && !NEGATED_RE.test(text) && EMERGENCY_SERVICE_RE.test(text);
+  const callVerb = CALL_VERB_RE.test(text) || LOCAL_CALL_RE.test(text);
+  if (!callVerb || NEGATED_RE.test(text)) return false;
+  // A bare "100" in "move 100 metres away" is not a call; the number must accompany a calling verb.
+  const numberHit = Array.from(allowedNumbers(country)).some((n) => new RegExp(`(^|\\D)${n}(\\D|$)`).test(text));
+  return numberHit || EMERGENCY_SERVICE_RE.test(text);
 }
 
 /* ----------------------------- engine ------------------------------ */
@@ -132,6 +137,10 @@ export function runVerification(input: VerificationInput): VerificationResult {
     { id: 'schema', status: 'pass', message: 'Model output matched the required structure.' },
   ];
 
+  /* Phone number + dosage guards (counters shared by every guarded field) */
+  let redactions = 0;
+  let dosageEdits = 0;
+
   /* Evidence grounding + confidence */
   const facts: VerifiedFact[] = output.facts.map((fact) => {
     const status = containsEvidence(userText, fact.evidence)
@@ -140,15 +149,22 @@ export function runVerification(input: VerificationInput): VerificationResult {
         ? 'transcribed'
         : 'unverified';
     const needsReview = status === 'unverified' || fact.confidence < LOW_CONFIDENCE_THRESHOLD;
-    return { ...fact, status, needsReview };
+    // Grounded facts may legitimately quote numbers from the user's own records; unverified ones may not.
+    if (status !== 'unverified') return { ...fact, status, needsReview };
+    const value = guardText(fact.value, country);
+    if (value.redacted) redactions += 1;
+    return { ...fact, value: value.text, status, needsReview };
   });
 
   const traceable = facts.filter((f) => f.status !== 'unverified').length;
-  const groundingScore = facts.length === 0 ? 1 : Math.round((traceable / facts.length) * 100) / 100;
+  const groundingScore = facts.length === 0 ? 0 : Math.round((traceable / facts.length) * 100) / 100;
   checks.push({
     id: 'evidence_grounding',
-    status: groundingScore >= MIN_GROUNDING_SCORE ? 'pass' : 'warn',
-    message: `${traceable} of ${facts.length} facts are traceable to the input (${Math.round(groundingScore * 100)}%).`,
+    status: facts.length > 0 && groundingScore >= MIN_GROUNDING_SCORE ? 'pass' : 'warn',
+    message:
+      facts.length === 0
+        ? 'No facts could be extracted, so nothing could be checked against the input.'
+        : `${traceable} of ${facts.length} facts are traceable to the input (${Math.round(groundingScore * 100)}%).`,
   });
 
   const lowConfidence = facts.filter((f) => f.confidence < LOW_CONFIDENCE_THRESHOLD);
@@ -161,29 +177,33 @@ export function runVerification(input: VerificationInput): VerificationResult {
         : `Please confirm: ${lowConfidence.map((f) => f.label).join(', ')}.`,
   });
 
-  /* Phone number + dosage guards */
-  let redactions = 0;
-  let dosageEdits = 0;
-  const summary = guardText(output.summary, country);
+  /** Number guard + dosage guard for free text written by the model. */
+  const guardAdvice = (text: string): { text: string; redacted: boolean; dosed: boolean } => {
+    const numbers = guardText(text, country);
+    const dosage = stripDosages(numbers.text);
+    return { text: dosage.text, redacted: numbers.redacted, dosed: dosage.changed };
+  };
+
+  const summary = guardAdvice(output.summary);
   if (summary.redacted) redactions += 1;
+  if (summary.dosed) dosageEdits += 1;
 
   const actions: VerifiedAction[] = output.actions.map((action) => {
     const flags: ActionFlag[] = [];
-    const instr = guardText(action.instruction, country);
-    const why = guardText(action.rationale, country);
+    const instr = guardAdvice(action.instruction);
+    const why = guardAdvice(action.rationale);
     if (instr.redacted || why.redacted) flags.push('number_redacted');
-    const dosedInstr = stripDosages(instr.text);
-    const dosedWhy = stripDosages(why.text);
-    if (dosedInstr.changed || dosedWhy.changed) flags.push('dosage_removed');
+    if (instr.dosed || why.dosed) flags.push('dosage_removed');
     redactions += flags.includes('number_redacted') ? 1 : 0;
     dosageEdits += flags.includes('dosage_removed') ? 1 : 0;
-    return { ...action, instruction: dosedInstr.text, rationale: dosedWhy.text, flags };
+    return { ...action, instruction: instr.text, rationale: why.text, flags };
   });
 
   const guardList = (items: readonly string[]): string[] =>
     items.map((item) => {
-      const g = guardText(item, country);
+      const g = guardAdvice(item);
       if (g.redacted) redactions += 1;
+      if (g.dosed) dosageEdits += 1;
       return g.text;
     });
   const redFlags = guardList(output.redFlags);
@@ -203,7 +223,7 @@ export function runVerification(input: VerificationInput): VerificationResult {
     message:
       dosageEdits === 0
         ? 'No medication doses were suggested.'
-        : `Removed medication doses from ${dosageEdits} action(s); follow a doctor's prescription.`,
+        : `Removed ${dosageEdits} suggested medication dose(s); follow a doctor's prescription.`,
   });
 
   /* Critical escalation */

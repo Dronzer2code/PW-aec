@@ -1,8 +1,8 @@
 import { buildActionCard } from '../domain/actionCard.js';
-import { DIRECTORY } from '../domain/contacts.js';
+import { DIRECTORY, type CountryCode } from '../domain/contacts.js';
 import { matchesMagicBytes } from '../domain/fileSniff.js';
 import { ModelOutputSchema, type ActionCard, type AnalyzeRequest, type LiveCheckResult, type ModelOutput } from '../domain/schema.js';
-import { runVerification } from '../domain/verify.js';
+import { redactUnknownNumbers, runVerification } from '../domain/verify.js';
 import { AppError } from '../errors.js';
 import type { Logger } from '../logger.js';
 import { cacheKey, type LruCache } from './cache.js';
@@ -13,6 +13,7 @@ export interface AnalyzeDeps {
   analyzer: GeminiAnalyzer | undefined;
   cache: LruCache<ActionCard>;
   logger: Logger;
+  /** Per Gemini call timeout. A request makes at most two sequential calls. */
   timeoutMs: number;
   now?: () => number;
 }
@@ -24,6 +25,23 @@ export interface AnalyzeOutcome {
 
 /** Number of attempts for the structured call when the model returns unusable output. */
 export const MAX_ATTEMPTS = 2;
+
+/** HTTP statuses from Gemini that mean the service is misconfigured (bad key, unknown model), not busy. */
+const CONFIG_ERROR_STATUSES: ReadonlySet<number> = new Set([400, 401, 403, 404]);
+
+/** Maps a Gemini SDK error to a non-retryable configuration error or a retryable upstream error. */
+export function toUpstreamError(err: unknown): AppError {
+  const status = typeof err === 'object' && err !== null ? (err as { status?: unknown }).status : undefined;
+  return typeof status === 'number' && CONFIG_ERROR_STATUSES.has(status)
+    ? new AppError('AI_UNAVAILABLE')
+    : new AppError('AI_UPSTREAM_ERROR');
+}
+
+/** Describes where the situation is, for the live check, using only coarse (about 1 km) coordinates. */
+export function describePlace(countryName: string, location: AnalyzeRequest['location']): string {
+  if (location === undefined) return countryName;
+  return `${countryName}, near latitude ${location.lat.toFixed(2)}, longitude ${location.lng.toFixed(2)}`;
+}
 
 function isAbort(err: unknown, signal: AbortSignal): boolean {
   return signal.aborted || (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError'));
@@ -54,7 +72,7 @@ async function structureWithRetry(
       if (isAbort(err, signal)) throw new AppError('AI_TIMEOUT');
       if (!(err instanceof ModelOutputError)) {
         logger.error('gemini request failed', { requestId, error: err instanceof Error ? err.message : 'unknown' });
-        throw new AppError('AI_UNAVAILABLE');
+        throw toUpstreamError(err);
       }
       logger.warn('model output was not JSON', { requestId, attempt });
     }
@@ -65,14 +83,15 @@ async function structureWithRetry(
 async function runLiveCheck(
   analyzer: GeminiAnalyzer,
   output: ModelOutput,
-  countryName: string,
-  timeoutMs: number,
+  context: { place: string; country: CountryCode; signal: AbortSignal },
   logger: Logger,
   requestId: string,
 ): Promise<LiveCheckResult> {
   const claims = [output.summary, ...output.facts.slice(0, 5).map((f) => `${f.label}: ${f.value}`)];
   try {
-    return await analyzer.liveCheck(claims, countryName, AbortSignal.timeout(timeoutMs));
+    const result = await analyzer.liveCheck(claims, context.place, context.signal);
+    // The note is model text too: it must never carry an unverified phone number.
+    return { ...result, note: redactUnknownNumbers(result.note, context.country).text };
   } catch (err) {
     logger.warn('live check failed', { requestId, error: err instanceof Error ? err.name : 'unknown' });
     return { status: 'error', note: 'The live web cross-check is unavailable right now.', sources: [] };
@@ -83,7 +102,12 @@ async function runLiveCheck(
  * Orchestrates one Intake → Action Card request:
  * cache → Gemini structuring (with retry) → verification → optional live check → card.
  */
-export async function analyzeIntake(request: AnalyzeRequest, requestId: string, deps: AnalyzeDeps): Promise<AnalyzeOutcome> {
+export async function analyzeIntake(
+  request: AnalyzeRequest,
+  requestId: string,
+  deps: AnalyzeDeps,
+  clientSignal?: AbortSignal,
+): Promise<AnalyzeOutcome> {
   const now = deps.now ?? Date.now;
   const started = now();
   assertFilesMatchTypes(request);
@@ -108,7 +132,13 @@ export async function analyzeIntake(request: AnalyzeRequest, requestId: string, 
     countryName: country.name,
   });
 
-  const output = await structureWithRetry(analyzer, parts, AbortSignal.timeout(deps.timeoutMs), deps.logger, requestId);
+  /** Each Gemini call stops at its timeout, or as soon as the client disconnects. */
+  const callSignal = (): AbortSignal => {
+    const timeout = AbortSignal.timeout(deps.timeoutMs);
+    return clientSignal === undefined ? timeout : AbortSignal.any([clientSignal, timeout]);
+  };
+
+  const output = await structureWithRetry(analyzer, parts, callSignal(), deps.logger, requestId);
 
   const verification = runVerification({
     output,
@@ -118,7 +148,13 @@ export async function analyzeIntake(request: AnalyzeRequest, requestId: string, 
   });
 
   const liveCheck: LiveCheckResult = request.liveCheck
-    ? await runLiveCheck(analyzer, output, country.name, deps.timeoutMs, deps.logger, requestId)
+    ? await runLiveCheck(
+        analyzer,
+        output,
+        { place: describePlace(country.name, request.location), country: request.country, signal: callSignal() },
+        deps.logger,
+        requestId,
+      )
     : { status: 'skipped', note: 'Live web cross-check was not requested.', sources: [] };
 
   const card = buildActionCard({
@@ -131,6 +167,7 @@ export async function analyzeIntake(request: AnalyzeRequest, requestId: string, 
     meta: { requestId, model: analyzer.model, latencyMs: now() - started },
   });
 
-  deps.cache.set(key, card);
+  // A failed live check is transient: do not pin it in the cache for the whole TTL.
+  if (liveCheck.status !== 'error') deps.cache.set(key, card);
   return { card, cached: false };
 }

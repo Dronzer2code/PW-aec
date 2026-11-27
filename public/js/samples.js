@@ -7,6 +7,7 @@
  * @property {string} title Short button label.
  * @property {string} text Messy Intake text exactly as a user might type or paste it.
  * @property {boolean} [liveCheck] Whether the sample should enable the live web cross-check.
+ * @property {{ name: string, lines: string[] }} [image] Fictional document drawn at runtime and attached as a PNG.
  */
 
 /** @type {readonly SampleIntake[]} */
@@ -54,4 +55,66 @@ export const SAMPLES = Object.freeze([
       'pain going to his left arm and jaw. He is diabetic and smokes. He says its just gas and doesnt want ' +
       'to go to hospital. We are at home, nobody else here. what should i do',
   },
+  {
+    id: 'prescription-photo',
+    title: 'Photo of a prescription',
+    text: 'Can you read this prescription and tell me what to watch out for?',
+    image: {
+      name: 'prescription-sample.png',
+      lines: [
+        'Rx   Dr. A. Mehta (fictional)',
+        'Pt: Ramesh K, 54',
+        '1) Tab Metformin 500 mg - 1-0-1 after food',
+        '2) Tab Telmisartan 40 mg - 1-0-0',
+        '3) Inj Insulin glargine 10 U night',
+        'Allergy: Sulfa',
+        'Review after 2 weeks',
+      ],
+    },
+  },
+  {
+    id: 'traffic-weather',
+    title: 'Traffic + weather alert',
+    liveCheck: true,
+    text:
+      'Fwd: TRAFFIC ADVISORY - Traffic Police: NH-48 closed near km 32 due to waterlogging, use service road. Expect long delays.\n' +
+      'Fwd: Heavy rain alert (IMD style): ORANGE ALERT for the district, very heavy rainfall likely next 24 hrs, avoid low lying roads.\n' +
+      '---\n' +
+      'my mother is on dialysis, appointment at 4pm at city hospital across the highway, she missed the last one. ' +
+      'we have no car, only auto. what do we do?',
+  },
 ]);
+
+/**
+ * Draws a fictional, handwriting-style document onto a canvas and returns it as a PNG Blob.
+ * Used by image samples so the demo exercises the photo path without real patient data.
+ * @param {string[]} lines Text lines to draw.
+ * @param {Document} [doc]
+ * @returns {Promise<Blob | null>} null when the browser cannot draw on a canvas.
+ */
+export function drawSampleImage(lines, doc = document) {
+  const width = 900;
+  const lineHeight = 64;
+  const canvas = Object.assign(doc.createElement('canvas'), { width, height: 120 + lines.length * lineHeight });
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return Promise.resolve(null);
+  ctx.fillStyle = '#fbf8ef'; // paper
+  ctx.fillRect(0, 0, width, canvas.height);
+  ctx.strokeStyle = '#c9d7e6'; // ruled lines
+  for (let y = 110; y < canvas.height; y += lineHeight) {
+    ctx.beginPath();
+    ctx.moveTo(40, y);
+    ctx.lineTo(width - 40, y);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#1d3a8a'; // ballpoint ink
+  ctx.font = 'italic 34px "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
+  lines.forEach((line, n) => {
+    ctx.save();
+    ctx.translate(60 + (n % 2) * 6, 100 + n * lineHeight);
+    ctx.rotate(((n % 3) - 1) * 0.012); // slight hand-written wobble
+    ctx.fillText(line, 0, 0);
+    ctx.restore();
+  });
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+}

@@ -25,11 +25,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [languages, countries, aiAvailable, limits]
+                required: [languages, countries, aiAvailable, requestTimeoutMs, limits]
                 properties:
                   languages: { type: array, items: { type: object, properties: { code: { type: string }, name: { type: string }, nativeName: { type: string } } } }
                   countries: { type: array, items: { type: object, properties: { code: { type: string }, name: { type: string }, emergency: { type: string } } } }
                   aiAvailable: { type: boolean }
+                  requestTimeoutMs: { type: integer, description: Client abort budget in ms }
                   limits: { type: object, properties: { maxTextChars: { type: integer }, maxFiles: { type: integer }, maxFileBytes: { type: integer } } }
   /api/analyze:
     post:
@@ -64,7 +65,7 @@ components:
                 type: object
                 required: [code, message, requestId]
                 properties:
-                  code: { type: string, enum: [VALIDATION_ERROR, PAYLOAD_TOO_LARGE, RATE_LIMITED, AI_UNAVAILABLE, AI_TIMEOUT, AI_BAD_OUTPUT, NOT_FOUND, INTERNAL] }
+                  code: { type: string, enum: [VALIDATION_ERROR, PAYLOAD_TOO_LARGE, RATE_LIMITED, AI_UNAVAILABLE, AI_TIMEOUT, AI_BAD_OUTPUT, AI_UPSTREAM_ERROR, NOT_FOUND, INTERNAL] }
                   message: { type: string }
                   requestId: { type: string }
                   details: { type: array, items: { type: string } }

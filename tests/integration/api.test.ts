@@ -43,6 +43,7 @@ describe('GET /api/config', () => {
       languages: LANGUAGES,
       countries: expect.arrayContaining([{ code: 'IN', name: 'India', emergency: '112' }]),
       aiAvailable: true,
+      requestTimeoutMs: expect.any(Number),
       limits: { maxTextChars: MAX_TEXT_CHARS, maxFiles: MAX_FILES, maxFileBytes: MAX_FILE_BYTES },
     });
     expect(res.body.countries).toHaveLength(5);
@@ -360,11 +361,11 @@ describe('POST /api/analyze: AI failures', () => {
     expect(Date.now() - started).toBeLessThan(4_000);
   });
 
-  it('503 without leaking the upstream error when Gemini fails', async () => {
+  it('502 (retryable) without leaking the upstream error when Gemini fails', async () => {
     const analyzer = fakeAnalyzer({ kind: 'genericError', message: 'API key invalid: AIza-secret' });
     const res = await request(createTestApp({ analyzer })).post('/api/analyze').send({ text: SAMPLE_TEXT });
-    expect(res.status).toBe(503);
-    expectEnvelope(res.body, 'AI_UNAVAILABLE');
+    expect(res.status).toBe(502);
+    expectEnvelope(res.body, 'AI_UPSTREAM_ERROR');
     expect(JSON.stringify(res.body)).not.toContain('AIza');
     expect(analyzer.structureCalls).toHaveLength(1);
   });
@@ -445,10 +446,16 @@ describe('static files', () => {
     expect(res.text).toContain('<h1>LifeBridge</h1>');
   });
 
-  it('serves other assets with a one-hour cache', async () => {
+  it('revalidates unversioned assets so deploys never mix module versions', async () => {
     const res = await request(createTestApp({ publicDir })).get('/app.css');
     expect(res.status).toBe(200);
-    expect(res.headers['cache-control']).toBe('public, max-age=3600');
+    expect(res.headers['cache-control']).toBe('no-cache');
+    expect(res.headers.etag).toBeDefined();
+  });
+
+  it('does not serve static files when the platform serves them (publicDir: null)', async () => {
+    const res = await request(createTestApp({ publicDir: null })).get('/app.css');
+    expect(res.status).toBe(404);
   });
 
   it('answers unknown paths with the 404 envelope', async () => {

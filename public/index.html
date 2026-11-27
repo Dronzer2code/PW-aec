@@ -9,6 +9,10 @@
     <title>LifeBridge — turn messy input into verified, life-saving actions</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/css/styles.css">
+    <link rel="modulepreload" href="/js/render.js">
+    <link rel="modulepreload" href="/js/samples.js">
+    <link rel="modulepreload" href="/js/files.js">
+    <link rel="modulepreload" href="/js/recorder.js">
     <script type="module" src="/js/app.js"></script>
   </head>
   <body>
@@ -56,9 +60,9 @@
                   <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3ZM19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg>
                   <span id="record-label">Record voice note</span>
                 </button>
-                <span id="record-timer" class="record-timer" hidden>0:00 / 2:00</span>
+                <span id="record-timer" class="record-timer" hidden>Recording 0:00 / 2:00</span>
               </div>
-              <p id="record-hint" class="hint">Up to 2 minutes. The recording is attached as a file below.</p>
+              <p id="record-hint" class="hint">Press once to start and again to stop (up to 2 minutes). The recording is attached as a file below.</p>
 
               <div class="field">
                 <label for="file-input">Add photos, PDFs or audio</label>
@@ -97,7 +101,7 @@
               <p id="live-hint" class="hint check-hint">Useful for forwarded warnings and news. Adds a few seconds.</p>
             </fieldset>
 
-            <button type="submit" id="submit-btn" class="btn btn-primary btn-block">Create Action Card</button>
+            <button type="submit" id="submit-btn" class="btn btn-primary btn-block" aria-disabled="false">Create Action Card</button>
             <p id="status" class="status" role="status" aria-live="polite"></p>
             <div id="error" class="error-box" role="alert">
               <p id="error-text" class="error-text"></p>
@@ -112,7 +116,7 @@
             <div id="card-toolbar" class="toolbar" role="group" aria-label="Action Card tools" hidden>
               <button type="button" id="speak-btn" class="btn btn-ghost" aria-pressed="false">
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5 6 9H2v6h4l5 4V5ZM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
-                <span id="speak-label">Read aloud</span>
+                <span>Read aloud</span>
               </button>
               <button type="button" id="copy-btn" class="btn btn-ghost">
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 9h11v11H9zM5 15H4V4h11v1"/></svg>

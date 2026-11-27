@@ -20,6 +20,7 @@ describe('AppError', () => {
       AI_UNAVAILABLE: 503,
       AI_TIMEOUT: 504,
       AI_BAD_OUTPUT: 502,
+      AI_UPSTREAM_ERROR: 502,
       NOT_FOUND: 404,
       INTERNAL: 500,
     });
