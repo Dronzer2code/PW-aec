@@ -230,19 +230,21 @@ describe('initTabs', () => {
     expect(selectedKeys()).toEqual(['voice']); // wrapped around
   });
 
-  it('holds while hovered and resumes with the remaining time', () => {
+  it('keeps rotating while hovered (only the toggle pauses), and resumes with the remaining time', () => {
     controller = initTabs(root(), { interval: 1000 });
-    vi.advanceTimersByTime(600);
     root().dispatchEvent(new MouseEvent('mouseenter'));
-    root().dispatchEvent(new MouseEvent('mouseenter')); // repeated holds are idempotent
-    expect(root().classList.contains('is-held')).toBe(true);
+    expect(root().classList.contains('is-held')).toBe(false);
+    vi.advanceTimersByTime(600);
+    const toggle = $('[data-autoplay-toggle]');
+    toggle.click(); // pause at 600 ms
     vi.advanceTimersByTime(5000);
     expect(selectedKeys()).toEqual(['voice']);
-    root().dispatchEvent(new MouseEvent('mouseleave'));
+    toggle.click(); // resume: 400 ms left, not a fresh 1000 ms
     vi.advanceTimersByTime(399);
     expect(selectedKeys()).toEqual(['voice']);
     vi.advanceTimersByTime(1);
     expect(selectedKeys()).toEqual(['photos']);
+    expect(toggle.getAttribute('title')).toBe('Pause automatic tab rotation');
   });
 
   it('holds while focus is inside, but not for the toggle itself', () => {
@@ -271,8 +273,7 @@ describe('initTabs', () => {
     expect(root().classList.contains('is-playing')).toBe(false);
     vi.advanceTimersByTime(5000);
     expect(selectedKeys()).toEqual(['voice']);
-    root().dispatchEvent(new MouseEvent('mouseenter'));
-    toggle.click(); // explicit play overrides the hover hold
+    toggle.click();
     expect(controller?.playing).toBe(true);
     vi.advanceTimersByTime(1000);
     expect(selectedKeys()).toEqual(['photos']);

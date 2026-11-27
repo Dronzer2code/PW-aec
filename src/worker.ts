@@ -44,8 +44,18 @@ function start(): number {
   return config.port;
 }
 
+/** Bindings declared in `wrangler.jsonc`. */
+interface Env {
+  ASSETS: { fetch(request: Request): Promise<Response> };
+}
+
 export default {
-  fetch(request: Request, env: unknown, ctx: unknown): Promise<Response> {
+  fetch(request: Request, env: Env, ctx: unknown): Promise<Response> {
+    const url = new URL(request.url);
+    // Workspace sub pages (/app/cards, /app/samples, ...) are client-side routes of app.html.
+    if (url.pathname.startsWith('/app/') && (request.method === 'GET' || request.method === 'HEAD')) {
+      return env.ASSETS.fetch(new Request(new URL('/app', url), request));
+    }
     port ??= start();
     return handleAsNodeRequest(port, request, env, ctx);
   },

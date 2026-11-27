@@ -63,7 +63,11 @@ export function initTabs(root, { interval = DEFAULT_INTERVAL, reducedMotion = fa
     stopTimer();
     root.classList.toggle('is-playing', playing);
     root.classList.toggle('is-held', playing && holds.size > 0);
-    if (toggle) toggle.setAttribute('aria-label', `${playing ? 'Pause' : 'Play'} automatic tab rotation`);
+    if (toggle) {
+      const label = `${playing ? 'Pause' : 'Play'} automatic tab rotation`;
+      toggle.setAttribute('aria-label', label);
+      toggle.setAttribute('title', label);
+    }
     if (!running()) return;
     startedAt = Date.now();
     timer = setTimeout(() => select(index + 1), remaining);
@@ -105,11 +109,12 @@ export function initTabs(root, { interval = DEFAULT_INTERVAL, reducedMotion = fa
     if (holds.delete(reason)) arm();
   }
 
+  /** Pause freezes the progress bar where it is; play resumes from the same point. */
   function setPlaying(value) {
+    if (value === playing && holds.size === 0) return;
+    if (running()) remaining = Math.max(0, remaining - (Date.now() - startedAt));
     playing = value;
-    holds.clear(); // an explicit choice wins over hover/focus holds
-    remaining = interval;
-    restartProgress();
+    holds.clear(); // an explicit choice wins over a focus hold
     arm();
   }
 
@@ -131,8 +136,6 @@ export function initTabs(root, { interval = DEFAULT_INTERVAL, reducedMotion = fa
     on(tab, 'click', () => select(tabs.indexOf(tab)));
   }
   on(toggle, 'click', () => setPlaying(!playing));
-  on(root, 'mouseenter', () => hold('hover'));
-  on(root, 'mouseleave', () => release('hover'));
   on(root, 'focusin', (event) => event.target !== toggle && hold('focus'));
   on(root, 'focusout', (event) => root.contains(event.relatedTarget) || release('focus'));
 

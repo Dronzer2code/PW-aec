@@ -12,8 +12,9 @@
   "assets": {
     // UI files are served directly by Cloudflare's edge; only the API reaches the Worker.
     "directory": "./public",
+    "binding": "ASSETS",
     "not_found_handling": "none",
-    "run_worker_first": ["/api/*", "/healthz"]
+    "run_worker_first": ["/api/*", "/healthz", "/app/*"]
   },
   "vars": {
     "NODE_ENV": "production",

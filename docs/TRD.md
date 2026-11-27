@@ -118,6 +118,17 @@ Errors use one envelope: `{ "error": { "code": "VALIDATION_ERROR|PAYLOAD_TOO_LAR
 - `AI_UPSTREAM_ERROR` (502): Gemini busy, quota (429), 5xx or network failure. Retryable.
 - The server aborts in-flight Gemini calls when the client disconnects (`res.on("close")` → `AbortSignal.any`).
 
+### Frontend routes
+
+| Path | Served file | Purpose |
+|---|---|---|
+| `/` | `public/index.html` | Landing page (`js/landing.js`, `js/clouds.js` WebGL sky) |
+| `/app` | `public/app.html` | Workspace: new Action Card composer |
+| `/app/cards`, `/app/cards/<id>` | `public/app.html` | Session-only list and detail of Action Cards (client-side routes) |
+| `/app/samples`, `/app/emergency`, `/app/verification` | `public/app.html` | Samples gallery, verified directory, verification explainer |
+
+Every `GET /app/*` returns `app.html` (Express route in `src/app.ts`; Worker `ASSETS` binding in `src/worker.ts`). `public/js/router.js` (History API) renders the page.
+
 ### `GET /healthz` → `200 {"status":"ok"}`
 
 ### `GET /api/config` → `200 { "languages": [...], "countries": [...], "aiAvailable": boolean, "requestTimeoutMs": number, "limits": {...} }`

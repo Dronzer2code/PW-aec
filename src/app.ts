@@ -68,8 +68,16 @@ export function createApp(deps: AppDeps): Express {
   app.use('/api', api);
 
   if (deps.publicDir !== null) {
+    const publicDir = deps.publicDir ?? defaultPublicDir();
+    // Workspace sub pages (/app/cards, /app/samples, ...) are client-side routes of app.html.
+    app.get('/app/{*page}', (_req, res, next) => {
+      res.setHeader('Cache-Control', 'no-cache');
+      res.sendFile('app.html', { root: publicDir }, (err) => {
+        if (err) next(err);
+      });
+    });
     app.use(
-      express.static(deps.publicDir ?? defaultPublicDir(), {
+      express.static(publicDir, {
         index: 'index.html',
         // `/app` serves app.html (the workspace); `/` serves the landing page.
         extensions: ['html'],

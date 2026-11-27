@@ -484,10 +484,13 @@ canvas.is-fallback { opacity: 1; }
   transform-origin: left center;
 }
 .tab[aria-selected='true'] .tab-progress { transform: scaleX(1); }
-.is-playing .tab[aria-selected='true'] .tab-progress.is-running {
+.tab[aria-selected='true'] .tab-progress.is-running {
   animation: fill var(--tab-interval, 6s) linear both;
 }
+/* Paused (by the toggle) or held (keyboard focus inside): the bar freezes in place. */
+[data-tabs]:not(.is-playing) .tab-progress.is-running,
 .is-held .tab-progress.is-running { animation-play-state: paused; }
+.autoplay:hover { background: #f4f4f2; }
 
 .autoplay {
   position: relative;

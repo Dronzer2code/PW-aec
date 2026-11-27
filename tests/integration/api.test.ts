@@ -461,6 +461,16 @@ describe('static files', () => {
     expect(res.headers['cache-control']).toBe('no-cache');
   });
 
+  it.each(['/app/cards', '/app/cards/abc123', '/app/samples', '/app/emergency', '/app/verification'])(
+    'serves the workspace shell for the client-side route %s',
+    async (path) => {
+      const res = await request(createTestApp({ publicDir })).get(path);
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('<h1>Workspace</h1>');
+      expect(res.headers['cache-control']).toBe('no-cache');
+    },
+  );
+
   it('does not serve static files when the platform serves them (publicDir: null)', async () => {
     const res = await request(createTestApp({ publicDir: null })).get('/app.css');
     expect(res.status).toBe(404);
