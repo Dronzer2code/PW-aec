@@ -149,6 +149,7 @@ export function createTestApp(overrides: Partial<AppDeps> = {}): Express {
     analyzer: fakeAnalyzer(),
     logger: silentLogger,
     rateLimitPerMinute: 1000,
+    analyzeRateLimitPerMinute: 1000,
     cacheMaxEntries: 50,
     cacheTtlMs: 60_000,
     geminiTimeoutMs: 5_000,

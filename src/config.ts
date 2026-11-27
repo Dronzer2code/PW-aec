@@ -16,6 +16,7 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).max(1000).default(20),
+  RATE_LIMIT_ANALYZE_PER_MINUTE: z.coerce.number().int().min(1).max(1000).default(6),
   CACHE_TTL_SECONDS: z.coerce.number().int().min(0).max(86_400).default(600),
   CACHE_MAX_ENTRIES: z.coerce.number().int().min(0).max(10_000).default(100),
   GEMINI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(30_000),
@@ -30,6 +31,7 @@ export interface AppConfig {
   readonly port: number;
   readonly nodeEnv: 'development' | 'production' | 'test';
   readonly rateLimitPerMinute: number;
+  readonly analyzeRateLimitPerMinute: number;
   readonly cacheTtlMs: number;
   readonly cacheMaxEntries: number;
   readonly geminiTimeoutMs: number;
@@ -58,6 +60,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: e.PORT,
     nodeEnv: e.NODE_ENV,
     rateLimitPerMinute: e.RATE_LIMIT_PER_MINUTE,
+    analyzeRateLimitPerMinute: e.RATE_LIMIT_ANALYZE_PER_MINUTE,
     cacheTtlMs: e.CACHE_TTL_SECONDS * 1000,
     cacheMaxEntries: e.CACHE_MAX_ENTRIES,
     geminiTimeoutMs: e.GEMINI_TIMEOUT_MS,

@@ -22,7 +22,14 @@
     "GEMINI_FALLBACK_MODELS": "gemini-3.5-flash-lite,gemini-2.5-flash",
     "GEMINI_LIVE_CHECK_MODEL": "gemini-2.5-flash",
     "RATE_LIMIT_PER_MINUTE": "20",
+    "RATE_LIMIT_ANALYZE_PER_MINUTE": "6",
     "GEMINI_TIMEOUT_MS": "30000"
   },
+  // Edge rate limits for POST /api/analyze (see src/edgeRateLimit.ts). No login needed:
+  // each visitor IP gets 6 Action Cards per minute, and the whole service 60 per minute.
+  "ratelimits": [
+    { "name": "ANALYZE_PER_CLIENT", "namespace_id": "1001", "simple": { "limit": 6, "period": 60 } },
+    { "name": "ANALYZE_GLOBAL", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } }
+  ],
   "observability": { "enabled": true }
 }

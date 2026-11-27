@@ -16,6 +16,8 @@ export interface AppDeps {
   analyzer: GeminiAnalyzer | undefined;
   logger: Logger;
   rateLimitPerMinute: number;
+  /** Stricter per-IP limit for POST /api/analyze (each call costs Gemini quota). Default 6. */
+  analyzeRateLimitPerMinute?: number;
   cacheMaxEntries: number;
   cacheTtlMs: number;
   geminiTimeoutMs: number;
@@ -29,6 +31,9 @@ export interface AppDeps {
 
 /** Max JSON body: 4 files × 5 MB base64-encoded (~6.7 MB each) plus text. */
 export const JSON_BODY_LIMIT = '28mb';
+
+/** Default Action Cards per minute per client IP. */
+export const DEFAULT_ANALYZE_LIMIT = 6;
 
 /** Client-side budget: structuring + live check calls plus network headroom. */
 export function requestTimeoutMs(geminiTimeoutMs: number): number {
@@ -56,7 +61,10 @@ export function createApp(deps: AppDeps): Express {
 
   const cache = new LruCache<ActionCard>(deps.cacheMaxEntries, deps.cacheTtlMs);
   const api = express.Router();
-  api.use(apiRateLimiter(deps.rateLimitPerMinute, { behindCloudflare: deps.behindCloudflare ?? false }));
+  const behindCloudflare = deps.behindCloudflare ?? false;
+  api.use(apiRateLimiter(deps.rateLimitPerMinute, { behindCloudflare }));
+  // No accounts: the expensive Gemini endpoint gets its own, tighter per-IP budget.
+  api.post('/analyze', apiRateLimiter(deps.analyzeRateLimitPerMinute ?? DEFAULT_ANALYZE_LIMIT, { behindCloudflare }));
   api.use(express.json({ limit: JSON_BODY_LIMIT }));
   api.use(
     configRouter({ aiAvailable: deps.analyzer !== undefined, requestTimeoutMs: requestTimeoutMs(deps.geminiTimeoutMs) }),

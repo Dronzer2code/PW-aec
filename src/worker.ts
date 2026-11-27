@@ -11,6 +11,7 @@
  *   rate limiter's cleanup) during global-scope initialization.
  */
 import { handleAsNodeRequest } from 'cloudflare:node';
+import { checkEdgeLimits, type RateLimitBinding } from './edgeRateLimit.js';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
@@ -34,6 +35,7 @@ function start(): number {
     analyzer,
     logger: createLogger(),
     rateLimitPerMinute: config.rateLimitPerMinute,
+    analyzeRateLimitPerMinute: config.analyzeRateLimitPerMinute,
     cacheMaxEntries: config.cacheMaxEntries,
     cacheTtlMs: config.cacheTtlMs,
     geminiTimeoutMs: config.geminiTimeoutMs,
@@ -47,15 +49,21 @@ function start(): number {
 /** Bindings declared in `wrangler.jsonc`. */
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
+  /** Per client IP limit on POST /api/analyze (no login required). */
+  ANALYZE_PER_CLIENT?: RateLimitBinding;
+  /** Whole-service limit on POST /api/analyze, protecting the Gemini quota. */
+  ANALYZE_GLOBAL?: RateLimitBinding;
 }
 
 export default {
-  fetch(request: Request, env: Env, ctx: unknown): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: unknown): Promise<Response> {
     const url = new URL(request.url);
     // Workspace sub pages (/app/cards, /app/samples, ...) are client-side routes of app.html.
     if (url.pathname.startsWith('/app/') && (request.method === 'GET' || request.method === 'HEAD')) {
       return env.ASSETS.fetch(new Request(new URL('/app', url), request));
     }
+    const limited = await checkEdgeLimits(request, { perClient: env.ANALYZE_PER_CLIENT, global: env.ANALYZE_GLOBAL });
+    if (limited !== null) return limited;
     port ??= start();
     return handleAsNodeRequest(port, request, env, ctx);
   },

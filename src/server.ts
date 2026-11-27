@@ -24,6 +24,7 @@ const app = createApp({
   analyzer,
   logger,
   rateLimitPerMinute: config.rateLimitPerMinute,
+    analyzeRateLimitPerMinute: config.analyzeRateLimitPerMinute,
   cacheMaxEntries: config.cacheMaxEntries,
   cacheTtlMs: config.cacheTtlMs,
   geminiTimeoutMs: config.geminiTimeoutMs,

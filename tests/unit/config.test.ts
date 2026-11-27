@@ -12,6 +12,7 @@ describe('loadConfig', () => {
       port: 8080,
       nodeEnv: 'production',
       rateLimitPerMinute: 20,
+      analyzeRateLimitPerMinute: 6,
       cacheTtlMs: 600_000,
       cacheMaxEntries: 100,
       geminiTimeoutMs: 30_000,

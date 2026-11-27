@@ -488,3 +488,22 @@ describe('static files', () => {
     expect(res.text).not.toContain('"dependencies"');
   });
 });
+
+describe('POST /api/analyze: per-IP Action Card budget (no login required)', () => {
+  it('allows the configured number of cards per minute, then answers 429 with Retry-After', async () => {
+    const app = createTestApp({ analyzeRateLimitPerMinute: 2 });
+    const send = (n: number) => request(app).post('/api/analyze').send({ text: `${SAMPLE_TEXT} ${n}` });
+    expect((await send(1)).status).toBe(200);
+    expect((await send(2)).status).toBe(200);
+    const blocked = await send(3);
+    expect(blocked.status).toBe(429);
+    expectEnvelope(blocked.body, 'RATE_LIMITED');
+    expect(blocked.headers['retry-after']).toBeDefined();
+  });
+
+  it('does not count cheap endpoints against the Action Card budget', async () => {
+    const app = createTestApp({ analyzeRateLimitPerMinute: 1 });
+    for (let i = 0; i < 5; i += 1) expect((await request(app).get('/api/config')).status).toBe(200);
+    expect((await request(app).post('/api/analyze').send({ text: SAMPLE_TEXT })).status).toBe(200);
+  });
+});
